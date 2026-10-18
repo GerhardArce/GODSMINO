@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.example.godsmino.ui.screen.GameScreen
 import com.example.godsmino.ui.screen.LobbyScreen
+import com.example.godsmino.ui.screen.StatisticsScreen
 import com.example.godsmino.ui.theme.GODSMINOTheme
 
 class MainActivity : ComponentActivity() {
@@ -18,12 +19,21 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             GODSMINOTheme {
-                var isInGame by remember { mutableStateOf(false) }
+                var currentScreen by remember { mutableStateOf("lobby") } // "lobby", "game", "stats"
+                var currentRoomId by remember { mutableStateOf("room_godsmino_1") }
+                var isHostUser by remember { mutableStateOf(true) }
 
-                if (isInGame) {
-                    GameScreen()
-                } else {
-                    LobbyScreen(onStartGame = { isInGame = true })
+                when (currentScreen) {
+                    "game" -> GameScreen(roomId = currentRoomId, isHost = isHostUser)
+                    "stats" -> StatisticsScreen(onBack = { currentScreen = "lobby" })
+                    else -> LobbyScreen(
+                        onStartGame = { roomId, isHost ->
+                            currentRoomId = roomId
+                            isHostUser = isHost
+                            currentScreen = "game"
+                        },
+                        onOpenStats = { currentScreen = "stats" }
+                    )
                 }
             }
         }

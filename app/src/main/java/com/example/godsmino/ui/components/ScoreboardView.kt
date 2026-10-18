@@ -38,7 +38,7 @@ fun ScoreboardView(
             val isCurrentTurn = player.id == currentTurnPlayerId
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = player.name + if (isCurrentTurn) " ⏳" else "",
+                    text = player.name + if (isCurrentTurn) " (Turno)" else "",
                     fontWeight = if (isCurrentTurn) FontWeight.Bold else FontWeight.Normal,
                     color = if (isCurrentTurn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )

@@ -40,36 +40,42 @@ fun DominoTileView(
     var isDragging by remember { mutableStateOf(false) }
 
     val scale by animateFloatAsState(
-        targetValue = if (isDragging || isSelected) 1.22f else 1.0f,
+        targetValue = if (isDragging || isSelected) 1.28f else 1.0f,
         label = "tileScale"
     )
 
+    // High-end professional physical ivory bone gradient
     val backgroundColor = if (isSelected || isDragging) {
-        Brush.verticalGradient(listOf(Color(0xFFFFFDE7), Color(0xFFFFF59D)))
+        Brush.verticalGradient(
+            listOf(Color(0xFFFFFFF8), Color(0xFFFFF8E1), Color(0xFFFFECB3))
+        )
     } else {
-        Brush.verticalGradient(listOf(Color(0xFFFAFAFA), Color(0xFFE0E0E0)))
+        Brush.verticalGradient(
+            listOf(Color(0xFFFCFBF9), Color(0xFFF5EFEB), Color(0xFFE8E1D5))
+        )
     }
 
-    val borderColor = if (isSelected || isDragging) Color(0xFFFFD700) else Color(0xFF9E9E9E)
+    val borderColor = if (isSelected || isDragging) Color(0xFFD4AF37) else Color(0xFFB5A898)
+    val borderWidth = if (isSelected || isDragging) 2.5.dp else 1.2.dp
 
-    val width = if (isHorizontal) 96.dp else 52.dp
-    val height = if (isHorizontal) 52.dp else 96.dp
+    val width = if (isHorizontal) 104.dp else 58.dp
+    val height = if (isHorizontal) 58.dp else 104.dp
 
     Box(
         modifier = Modifier
-            .zIndex(if (isDragging) 999f else 0f)
+            .zIndex(if (isDragging) 9999f else 0f)
             .graphicsLayer {
                 translationX = offsetX
                 translationY = offsetY
             }
-            .padding(2.dp)
+            .padding(3.dp)
             .width(width)
             .height(height)
             .scale(scale)
-            .shadow(if (isSelected || isDragging) 16.dp else 4.dp, RoundedCornerShape(8.dp))
-            .clip(RoundedCornerShape(8.dp))
+            .shadow(if (isDragging || isSelected) 24.dp else 6.dp, RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(backgroundColor)
-            .border(2.dp, borderColor, RoundedCornerShape(8.dp))
+            .border(borderWidth, borderColor, RoundedCornerShape(10.dp))
             .then(
                 if (isDraggable) {
                     Modifier.pointerInput(Unit) {
@@ -106,25 +112,27 @@ fun DominoTileView(
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(3.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 // Left half
-                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                     DominoHalfValue(value = tile.left)
                 }
-                // Vertical Divider line with Brass Spinner Pin
+                // Center Divider with Realistic Brass Spinner Pin
                 Box(
-                    modifier = Modifier.width(2.dp).fillMaxHeight().background(Color(0xFF757575)),
+                    modifier = Modifier.width(2.5.dp).fillMaxHeight().background(Color(0xFFC5A880)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Canvas(modifier = Modifier.size(6.dp)) {
-                        drawCircle(color = Color(0xFFB8860B), radius = size.minDimension / 2f)
-                        drawCircle(color = Color(0xFFFFD700), radius = size.minDimension / 4f)
+                    Canvas(modifier = Modifier.size(9.dp)) {
+                        drawCircle(color = Color(0xFF6D5226), radius = size.minDimension / 2f)
+                        drawCircle(color = Color(0xFFD4AF37), radius = size.minDimension / 3.2f)
+                        drawCircle(color = Color(0xFFFFF9C4), radius = size.minDimension / 6f)
                     }
                 }
                 // Right half
-                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                Box(modifier = Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
                     DominoHalfValue(value = tile.right)
                 }
             }
@@ -132,25 +140,27 @@ fun DominoTileView(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(3.dp),
-                verticalArrangement = Arrangement.SpaceBetween
+                    .padding(4.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Top half
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     DominoHalfValue(value = tile.left)
                 }
-                // Horizontal Divider line with Brass Spinner Pin
+                // Center Divider with Realistic Brass Spinner Pin
                 Box(
-                    modifier = Modifier.height(2.dp).fillMaxWidth().background(Color(0xFF757575)),
+                    modifier = Modifier.height(2.5.dp).fillMaxWidth().background(Color(0xFFC5A880)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Canvas(modifier = Modifier.size(6.dp)) {
-                        drawCircle(color = Color(0xFFB8860B), radius = size.minDimension / 2f)
-                        drawCircle(color = Color(0xFFFFD700), radius = size.minDimension / 4f)
+                    Canvas(modifier = Modifier.size(9.dp)) {
+                        drawCircle(color = Color(0xFF6D5226), radius = size.minDimension / 2f)
+                        drawCircle(color = Color(0xFFD4AF37), radius = size.minDimension / 3.2f)
+                        drawCircle(color = Color(0xFFFFF9C4), radius = size.minDimension / 6f)
                     }
                 }
                 // Bottom half
-                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     DominoHalfValue(value = tile.right)
                 }
             }
@@ -160,53 +170,58 @@ fun DominoTileView(
 
 @Composable
 fun DominoHalfValue(value: Int) {
-    val dotColor = Color(0xFF212121)
-    val dotRadius = 4f
+    val pipColor = Color(0xFF161616)
+    val pipHighlightColor = Color(0xFFFFFFFF)
 
     Canvas(modifier = Modifier.fillMaxSize()) {
         val w = size.width
         val h = size.height
         val cx = w / 2f
         val cy = h / 2f
-        val qx = w / 3.8f
-        val qy = h / 3.8f
+        val qx = w / 3.4f
+        val qy = h / 3.4f
+        val pipRadius = 4.8f
 
-        fun drawDot(x: Float, y: Float) {
-            drawCircle(color = dotColor, radius = dotRadius, center = Offset(x, y))
-            drawCircle(color = Color.White.copy(alpha = 0.5f), radius = 1.2f, center = Offset(x - 1f, y - 1f))
+        fun drawPip(x: Float, y: Float) {
+            // Drop shadow / depth for pip
+            drawCircle(color = pipHighlightColor.copy(alpha = 0.5f), radius = pipRadius + 0.9f, center = Offset(x + 0.6f, y + 0.6f))
+            // Main Pip
+            drawCircle(color = pipColor, radius = pipRadius, center = Offset(x, y))
+            // Specular highlight on pip
+            drawCircle(color = Color.White.copy(alpha = 0.45f), radius = 1.3f, center = Offset(x - 1.2f, y - 1.2f))
         }
 
         when (value) {
-            1 -> drawDot(cx, cy)
+            1 -> drawPip(cx, cy)
             2 -> {
-                drawDot(qx, qy)
-                drawDot(w - qx, h - qy)
+                drawPip(qx, qy)
+                drawPip(w - qx, h - qy)
             }
             3 -> {
-                drawDot(qx, qy)
-                drawDot(cx, cy)
-                drawDot(w - qx, h - qy)
+                drawPip(qx, qy)
+                drawPip(cx, cy)
+                drawPip(w - qx, h - qy)
             }
             4 -> {
-                drawDot(qx, qy)
-                drawDot(w - qx, qy)
-                drawDot(qx, h - qy)
-                drawDot(w - qx, h - qy)
+                drawPip(qx, qy)
+                drawPip(w - qx, qy)
+                drawPip(qx, h - qy)
+                drawPip(w - qx, h - qy)
             }
             5 -> {
-                drawDot(qx, qy)
-                drawDot(w - qx, qy)
-                drawDot(cx, cy)
-                drawDot(qx, h - qy)
-                drawDot(w - qx, h - qy)
+                drawPip(qx, qy)
+                drawPip(w - qx, qy)
+                drawPip(cx, cy)
+                drawPip(qx, h - qy)
+                drawPip(w - qx, h - qy)
             }
             6 -> {
-                drawDot(qx, qy)
-                drawDot(w - qx, qy)
-                drawDot(qx, cy)
-                drawDot(w - qx, cy)
-                drawDot(qx, h - qy)
-                drawDot(w - qx, h - qy)
+                drawPip(qx, qy)
+                drawPip(w - qx, qy)
+                drawPip(qx, cy)
+                drawPip(w - qx, cy)
+                drawPip(qx, h - qy)
+                drawPip(w - qx, h - qy)
             }
         }
     }

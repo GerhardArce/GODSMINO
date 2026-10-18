@@ -8,6 +8,9 @@ data class GameUiState(
     val session: GameSession = GameSession(),
     val selectedTile: Tile? = null,
     val selectedPower: PowerType? = null,
+    val pendingPowerDialog: PowerType? = null,
+    val selectedTileForSwap: Tile? = null,
+    val boardThemeIndex: Int = 0,
     val isLoading: Boolean = false,
     val errorMessage: String? = null
 )

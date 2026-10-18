@@ -1,5 +1,6 @@
 package com.example.godsmino
 
+import com.example.godsmino.data.model.PowerType
 import com.example.godsmino.ui.viewmodel.GameViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -45,7 +46,29 @@ class GameViewModelTest {
         viewModel.selectTile(firstTile)
         assertEquals(firstTile, viewModel.uiState.value.selectedTile)
 
-        viewModel.selectTile(firstTile)
+        viewModel.selectTile(firstTile) // toggle off
         assertNull(viewModel.uiState.value.selectedTile)
+    }
+
+    @Test
+    fun testToggleBoardTheme() = runTest {
+        val viewModel = GameViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val initialTheme = viewModel.uiState.value.boardThemeIndex
+
+        viewModel.toggleBoardTheme()
+        assertEquals((initialTheme + 1) % 4, viewModel.uiState.value.boardThemeIndex)
+    }
+
+    @Test
+    fun testRequestPowerDialog() = runTest {
+        val viewModel = GameViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.requestUsePower(PowerType.WILDCARD)
+        assertEquals(PowerType.WILDCARD, viewModel.uiState.value.pendingPowerDialog)
+
+        viewModel.dismissPowerDialog()
+        assertNull(viewModel.uiState.value.pendingPowerDialog)
     }
 }
