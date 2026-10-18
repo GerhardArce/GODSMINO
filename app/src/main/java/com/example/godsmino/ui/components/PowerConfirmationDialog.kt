@@ -33,11 +33,12 @@ fun PowerConfirmationDialog(
         containerColor = Color(0xFF181818),
         shape = RoundedCornerShape(16.dp),
         title = {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .background(Color(0xFFD4AF37), RoundedCornerShape(5.dp))
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Icon(
+                    imageVector = powerType.icon,
+                    contentDescription = powerType.displayName,
+                    modifier = Modifier.size(26.dp),
+                    tint = Color(0xFFD4AF37)
                 )
                 Text(
                     text = powerType.displayName,

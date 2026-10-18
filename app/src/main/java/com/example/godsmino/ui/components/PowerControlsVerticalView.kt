@@ -3,13 +3,12 @@ package com.example.godsmino.ui.components
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.godsmino.data.model.PowerType
@@ -43,17 +42,17 @@ fun PowerControlsVerticalView(
                 contentPadding = PaddingValues(6.dp)
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(
-                        text = power.displayName.split(" ").first(),
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isSelected) Color.Black else Color.White,
-                        textAlign = TextAlign.Center
+                    Icon(
+                        imageVector = power.icon,
+                        contentDescription = power.displayName,
+                        modifier = Modifier.size(20.dp),
+                        tint = if (isSelected) Color.Black else Color(0xFFD4AF37)
                     )
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        text = "($count)",
+                        text = "(${count})",
                         fontSize = 10.sp,
-                        color = if (isSelected) Color.DarkGray else Color(0xFFD4AF37)
+                        color = if (isSelected) Color.DarkGray else Color.White
                     )
                 }
             }
