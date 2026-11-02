@@ -71,4 +71,44 @@ class GameViewModelTest {
         viewModel.dismissPowerDialog()
         assertNull(viewModel.uiState.value.pendingPowerDialog)
     }
+
+    @Test
+    fun testDrawTile() = runTest {
+        val viewModel = GameViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+        val initialTilesCount = viewModel.uiState.value.session.players[0].tiles.size
+
+        viewModel.drawTile()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val newTilesCount = viewModel.uiState.value.session.players[0].tiles.size
+        assertEquals(initialTilesCount + 1, newTilesCount)
+    }
+
+    @Test
+    fun testForfeitGame() = runTest {
+        val viewModel = GameViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.forfeitGame()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val status = viewModel.uiState.value.session.status
+        assertEquals(com.example.godsmino.data.model.GameStatus.FINISHED, status)
+    }
+
+    @Test
+    fun testRestartGame() = runTest {
+        val viewModel = GameViewModel()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.forfeitGame()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.restartGame()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val status = viewModel.uiState.value.session.status
+        assertEquals(com.example.godsmino.data.model.GameStatus.PLAYING, status)
+    }
 }

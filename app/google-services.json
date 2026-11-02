@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "566064644349",
+    "project_id": "godsmino-5278b",
+    "storage_bucket": "godsmino-5278b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:566064644349:android:5cf616f1fc4f77946b7e94",
+        "android_client_info": {
+          "package_name": "com.example.godsmino"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCI05M8cWYvTgFOMppzXFxKtJVNI4nAyeo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

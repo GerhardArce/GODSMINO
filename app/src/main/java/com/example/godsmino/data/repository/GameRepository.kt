@@ -142,8 +142,9 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
             activeEvent = possibleEvent
         )
 
-        _session.value = newSession
-        firebaseDataSource.syncGameSession(newSession.roomId, newSession)
+        val evaluatedSession = evaluateTranca(newSession)
+        _session.value = evaluatedSession
+        firebaseDataSource.syncGameSession(evaluatedSession.roomId, evaluatedSession)
         return Pair(true, null)
     }
 
@@ -176,8 +177,9 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
             boneyard = newBoneyard,
             activeEvent = RandomEvent("ev_draw", "Robo en el Pozo", "${player.name} ha robado una ficha del pozo.", "INFO")
         )
-        _session.value = newSession
-        firebaseDataSource.syncGameSession(newSession.roomId, newSession)
+        val evaluatedSession = evaluateTranca(newSession)
+        _session.value = evaluatedSession
+        firebaseDataSource.syncGameSession(evaluatedSession.roomId, evaluatedSession)
         return Pair(true, null)
     }
 
@@ -281,6 +283,73 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
         val newSession = current.copy(
             players = swappedPlayers,
             activeEvent = RandomEvent("ev_swap", "Intercambio Mistico", "${player.name} intercambio su ficha [${myMatching.left}|${myMatching.right}] por una ficha secreta del rival.", "POWER")
+        )
+        _session.value = newSession
+        firebaseDataSource.syncGameSession(newSession.roomId, newSession)
+        return Pair(true, null)
+    }
+
+    private fun evaluateTranca(session: GameSession): GameSession {
+        if (session.status != GameStatus.PLAYING || session.board.isEmpty() || session.boneyard.isNotEmpty()) {
+            return session
+        }
+
+        val leftEnd = session.getLeftEnd()
+        val rightEnd = session.getRightEnd()
+
+        val p1 = session.players.getOrNull(0) ?: return session
+        val p2 = session.players.getOrNull(1) ?: return session
+
+        val p1CanPlay = p1.tiles.any { t -> (leftEnd != null && (t.left == leftEnd || t.right == leftEnd)) || (rightEnd != null && (t.left == rightEnd || t.right == rightEnd)) }
+        val p2CanPlay = p2.tiles.any { t -> (leftEnd != null && (t.left == leftEnd || t.right == leftEnd)) || (rightEnd != null && (t.left == rightEnd || t.right == rightEnd)) }
+
+        if (!p1CanPlay && !p2CanPlay) {
+            val p1Sum = p1.tiles.sumOf { it.sumPoints() }
+            val p2Sum = p2.tiles.sumOf { it.sumPoints() }
+
+            val p1PowersUsed = 5 - p1.powerCounts.values.sum()
+            val p2PowersUsed = 5 - p2.powerCounts.values.sum()
+
+            val (winnerId, desc) = when {
+                p1Sum < p2Sum -> Pair(p1.id, "¡Tranca de juego! Ganó ${p1.name} por menor acumulado de puntos (${p1Sum} vs ${p2Sum}).")
+                p2Sum < p1Sum -> Pair(p2.id, "¡Tranca de juego! Ganó ${p2.name} por menor acumulado de puntos (${p2Sum} vs ${p1Sum}).")
+                else -> {
+                    when {
+                        p1PowersUsed < p2PowersUsed -> Pair(p1.id, "¡Tranca y empate de puntos! Ganó ${p1.name} por usar menos poderes (${p1PowersUsed} vs ${p2PowersUsed}).")
+                        p2PowersUsed < p1PowersUsed -> Pair(p2.id, "¡Tranca y empate de puntos! Ganó ${p2.name} por usar menos poderes (${p2PowersUsed} vs ${p1PowersUsed}).")
+                        else -> Pair(p1.id, "¡Tranca y empate perfecto en puntos y poderes!")
+                    }
+                }
+            }
+
+            val updatedPlayers = session.players.map { p ->
+                if (p.id == winnerId) p.copy(score = p.score + 50) else p
+            }
+
+            return session.copy(
+                status = GameStatus.FINISHED,
+                players = updatedPlayers,
+                currentTurnPlayerId = winnerId,
+                activeEvent = RandomEvent("ev_tranca", "¡Tranca de Juego!", desc, "INFO")
+            )
+        }
+        return session
+    }
+
+    fun forfeitGame(playerId: String): Pair<Boolean, String?> {
+        val current = _session.value
+        if (current.status != GameStatus.PLAYING) return Pair(false, "Partida inactiva.")
+
+        val winner = current.players.firstOrNull { it.id != playerId } ?: return Pair(false, "Oponente no encontrado.")
+        val updatedPlayers = current.players.map {
+            if (it.id == winner.id) it.copy(score = it.score + 100) else it
+        }
+
+        val newSession = current.copy(
+            status = GameStatus.FINISHED,
+            players = updatedPlayers,
+            currentTurnPlayerId = winner.id,
+            activeEvent = RandomEvent("ev_forfeit", "Abandono de Partida", "Un jugador ha abandonado la partida.", "INFO")
         )
         _session.value = newSession
         firebaseDataSource.syncGameSession(newSession.roomId, newSession)

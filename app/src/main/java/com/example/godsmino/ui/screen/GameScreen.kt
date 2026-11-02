@@ -12,10 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,11 +37,13 @@ import kotlin.math.abs
 fun GameScreen(
     roomId: String = "room_godsmino_1",
     isHost: Boolean = true,
-    viewModel: GameViewModel = viewModel()
+    viewModel: GameViewModel = viewModel(),
+    onBackToLobby: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val session = uiState.session
     val haptic = LocalHapticFeedback.current
+    var showQuitDialog by remember { mutableStateOf(false) }
 
     // Always keep Player 1 (You) fixed at the bottom, and opponent fixed at the top
     val player1 = session.players.firstOrNull { it.id == "p1" } ?: session.players.firstOrNull()
@@ -73,6 +72,33 @@ fun GameScreen(
         )
     }
 
+    // Quit Match Confirmation Dialog
+    if (showQuitDialog) {
+        AlertDialog(
+            onDismissRequest = { showQuitDialog = false },
+            containerColor = Color(0xFF1C1C1C),
+            title = { Text("Abandonar Partida", color = Color(0xFFFF5252), fontWeight = FontWeight.Bold) },
+            text = { Text("¿Seguro que deseas abandonar la partida? Esto concedera la victoria al oponente.", color = Color.LightGray) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showQuitDialog = false
+                        viewModel.forfeitGame()
+                        onBackToLobby()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFFF5252))
+                ) {
+                    Text("Abandonar", color = Color.White, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showQuitDialog = false }) {
+                    Text("Cancelar", color = Color.LightGray)
+                }
+            }
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -90,20 +116,29 @@ fun GameScreen(
                 .padding(10.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            // 1. TOP SECTION: Opponent Info & Room ID
+            // 1. TOP SECTION: Opponent Info & Room ID + Abandon Button
             Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (opponent != null) {
                     OpponentHeaderView(opponent = opponent, isTurn = !isMyTurn)
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Sala: ${session.roomId}",
-                        fontSize = 10.sp,
-                        color = Color.LightGray.copy(alpha = 0.7f)
-                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "Sala: ${session.roomId}",
+                            fontSize = 10.sp,
+                            color = Color.LightGray.copy(alpha = 0.7f)
+                        )
+                        TextButton(
+                            onClick = { showQuitDialog = true },
+                            contentPadding = PaddingValues(0.dp)
+                        ) {
+                            Text("Abandonar", fontSize = 10.sp, color = Color(0xFFFF5252), fontWeight = FontWeight.Bold)
+                        }
+                    }
                     Text(
                         text = if (isMyTurn) "Tu Turno (Juega una ficha)" else "Turno del Oponente (Pensando...)",
                         fontSize = 10.sp,

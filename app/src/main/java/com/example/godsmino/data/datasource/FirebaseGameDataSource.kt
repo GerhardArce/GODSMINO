@@ -1,29 +1,64 @@
 package com.example.godsmino.data.datasource
 
 import com.example.godsmino.data.model.GameSession
+import com.google.android.gms.tasks.Tasks
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.withContext
 
-/**
- * Fuente de datos para la sincronización en tiempo real con Firebase Firestore
- * y salas multijugador online.
- */
 class FirebaseGameDataSource {
-    companion object {
-        // Almacenamiento en memoria compartido para simular múltiples jugadores en el mismo dispositivo o red
-        private val activeRooms = mutableMapOf<String, MutableStateFlow<GameSession?>>()
+    private val firestore: FirebaseFirestore? by lazy {
+        try {
+            FirebaseFirestore.getInstance()
+        } catch (e: Exception) {
+            null
+        }
     }
 
     fun syncGameSession(roomId: String, session: GameSession) {
-        val flow = activeRooms.getOrPut(roomId) { MutableStateFlow(null) }
-        flow.value = session
-        // Aquí se conectaría con FirebaseFirestore.getInstance().collection("games").document(roomId).set(session)
+        try {
+            firestore?.collection("games")?.document(roomId)?.set(session)
+        } catch (_: Exception) {}
     }
 
-    fun observeGameSession(roomId: String): Flow<GameSession?> {
-        val flow = activeRooms.getOrPut(roomId) { MutableStateFlow(null) }
-        // Aquí se conectaría con FirebaseFirestore.getInstance().collection("games").document(roomId).addSnapshotListener { ... }
-        return flow.asStateFlow()
+    suspend fun getExistingSession(roomId: String): GameSession? {
+        return withContext(Dispatchers.IO) {
+            try {
+                val instance = firestore ?: return@withContext null
+                val snapshot = Tasks.await(instance.collection("games").document(roomId).get())
+                if (snapshot.exists()) {
+                    snapshot.toObject(GameSession::class.java)
+                } else null
+            } catch (e: Exception) {
+                null
+            }
+        }
+    }
+
+    fun observeGameSession(roomId: String): Flow<GameSession?> = callbackFlow {
+        val instance = firestore
+        if (instance == null) {
+            trySend(null)
+            close()
+            return@callbackFlow
+        }
+        val listener = instance.collection("games")
+            .document(roomId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
+                if (snapshot != null && snapshot.exists()) {
+                    val session = snapshot.toObject(GameSession::class.java)
+                    trySend(session)
+                } else {
+                    trySend(null)
+                }
+            }
+        awaitClose { listener.remove() }
     }
 }

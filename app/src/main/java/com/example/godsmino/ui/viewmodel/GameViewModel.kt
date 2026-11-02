@@ -195,4 +195,8 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
         repository.restartGame()
         _uiState.update { GameUiState() }
     }
+
+    fun forfeitGame() {
+        repository.forfeitGame("p1")
+    }
 }
