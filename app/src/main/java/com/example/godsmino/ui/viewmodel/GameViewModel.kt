@@ -16,9 +16,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+import kotlinx.coroutines.Job
+
 class GameViewModel(application: Application = Application()) : AndroidViewModel(application) {
     private var repository = GameRepository("room_godsmino_1", true)
     private var statsRecorded = false
+    private var observeJob: Job? = null
+    var localPlayerId = "p1"
+        private set
 
     private val _uiState = MutableStateFlow(GameUiState())
     val uiState: StateFlow<GameUiState> = _uiState.asStateFlow()
@@ -28,33 +33,36 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
     }
 
     fun startRoom(roomId: String, isHost: Boolean) {
+        repository.cleanup()
+        localPlayerId = if (isHost) "p1" else "p2"
         repository = GameRepository(roomId, isHost)
         statsRecorded = false
         observeRepository()
     }
 
     private fun observeRepository() {
-        viewModelScope.launch {
+        observeJob?.cancel()
+        observeJob = viewModelScope.launch {
             repository.session.collect { session ->
                 _uiState.update { it.copy(session = session) }
                 if (session.status == GameStatus.FINISHED && !statsRecorded) {
                     statsRecorded = true
                     try {
-                        val p1 = session.players.find { it.id == "p1" }
-                        val isWin = session.currentTurnPlayerId == "p1"
+                        val p1 = session.players.find { it.id == localPlayerId }
+                        val isWin = session.currentTurnPlayerId == localPlayerId
                         val score = p1?.score ?: 0
                         GameStatsManager.recordMatch(getApplication(), isWin, score)
                     } catch (_: Exception) {}
                 } else if (session.status != GameStatus.FINISHED) {
                     statsRecorded = false
                 }
-                checkBotTurn(session.currentTurnPlayerId, session.status)
+                checkBotTurn(session.currentTurnPlayerId, session.status, session.roomId)
             }
         }
     }
 
-    private fun checkBotTurn(currentTurnPlayerId: String, status: GameStatus) {
-        if (currentTurnPlayerId == "p2" && status == GameStatus.PLAYING) {
+    private fun checkBotTurn(currentTurnPlayerId: String, status: GameStatus, roomId: String) {
+        if (roomId == "room_offline_bot" && currentTurnPlayerId == "p2" && status == GameStatus.PLAYING) {
             viewModelScope.launch {
                 delay(1200)
                 triggerBotMove()
@@ -82,7 +90,10 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
         } else if (session.boneyardSize > 0) {
             repository.drawTile("p2")
         } else {
-            repository.usePower("p2", PowerType.SKIP)
+            val (success, _) = repository.usePower("p2", PowerType.SKIP)
+            if (!success) {
+                repository.passTurn("p2")
+            }
         }
     }
 
@@ -96,7 +107,7 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
 
     fun requestUsePower(powerType: PowerType) {
         val currentUserId = _uiState.value.session.currentTurnPlayerId
-        if (currentUserId != "p1") {
+        if (currentUserId != localPlayerId) {
             _uiState.update { it.copy(errorMessage = "No es tu turno para usar poderes.") }
             return
         }
@@ -148,7 +159,7 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
 
     fun playSpecificTile(tile: Tile, direction: BoardDirection) {
         val currentUserId = _uiState.value.session.currentTurnPlayerId
-        if (currentUserId != "p1") {
+        if (currentUserId != localPlayerId) {
             _uiState.update { it.copy(errorMessage = "No es tu turno actual.") }
             return
         }
@@ -173,8 +184,20 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
 
     fun drawTile() {
         val currentUserId = _uiState.value.session.currentTurnPlayerId
-        if (currentUserId == "p1") {
+        if (currentUserId == localPlayerId) {
             val (success, error) = repository.drawTile(currentUserId)
+            if (!success) {
+                _uiState.update { it.copy(errorMessage = error) }
+            } else {
+                _uiState.update { it.copy(errorMessage = null) }
+            }
+        }
+    }
+
+    fun passTurn() {
+        val currentUserId = _uiState.value.session.currentTurnPlayerId
+        if (currentUserId == localPlayerId) {
+            val (success, error) = repository.passTurn(currentUserId)
             if (!success) {
                 _uiState.update { it.copy(errorMessage = error) }
             } else {
@@ -197,6 +220,11 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
     }
 
     fun forfeitGame() {
-        repository.forfeitGame("p1")
+        repository.forfeitGame(localPlayerId)
+    }
+
+    override fun onCleared() {
+        repository.cleanup()
+        super.onCleared()
     }
 }

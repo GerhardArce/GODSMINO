@@ -8,8 +8,7 @@ data class GameSession(
     val boneyard: List<Tile> = emptyList(),
     val status: GameStatus = GameStatus.WAITING,
     val activeEvent: RandomEvent? = null,
-    val roundNumber: Int = 1,
-    val isClockwise: Boolean = true
+    val roundNumber: Int = 1
 ) {
     val boneyardSize: Int get() = boneyard.size
     fun getLeftEnd(): Int? = board.firstOrNull()?.left

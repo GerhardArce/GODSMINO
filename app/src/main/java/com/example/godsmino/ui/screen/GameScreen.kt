@@ -45,10 +45,11 @@ fun GameScreen(
     val haptic = LocalHapticFeedback.current
     var showQuitDialog by remember { mutableStateOf(false) }
 
-    // Always keep Player 1 (You) fixed at the bottom, and opponent fixed at the top
-    val player1 = session.players.firstOrNull { it.id == "p1" } ?: session.players.firstOrNull()
-    val opponent = session.players.firstOrNull { it.id != "p1" } ?: session.players.getOrNull(1)
-    val isMyTurn = session.currentTurnPlayerId == "p1"
+    // Always keep Local Player fixed at the bottom, and opponent fixed at the top
+    val localPlayerId = viewModel.localPlayerId
+    val player1 = session.players.firstOrNull { it.id == localPlayerId } ?: session.players.firstOrNull()
+    val opponent = session.players.firstOrNull { it.id != localPlayerId } ?: session.players.getOrNull(1)
+    val isMyTurn = session.currentTurnPlayerId == localPlayerId
 
     LaunchedEffect(roomId) {
         viewModel.startRoom(roomId, isHost)
@@ -332,20 +333,38 @@ fun GameScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Button(
-                            onClick = {
-                                if (isMyTurn) {
-                                    SoundManager.playDrawTile()
-                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                    viewModel.drawTile()
-                                }
-                            },
-                            enabled = isMyTurn,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC5A880)),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(text = "Robar Pozo", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                        if (session.boneyardSize > 0) {
+                            Button(
+                                onClick = {
+                                    if (isMyTurn) {
+                                        SoundManager.playDrawTile()
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        viewModel.drawTile()
+                                    }
+                                },
+                                enabled = isMyTurn,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC5A880)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(text = "Robar Pozo", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                            }
+                        } else {
+                            Button(
+                                onClick = {
+                                    if (isMyTurn) {
+                                        SoundManager.playClickSound()
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        viewModel.passTurn()
+                                    }
+                                },
+                                enabled = isMyTurn,
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C)),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Text(text = "Pasar Turno", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            }
                         }
 
                         Button(

@@ -5,14 +5,48 @@ import com.example.godsmino.data.model.*
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import kotlin.random.Random
 
 class GameRepository(private val roomId: String = "room_godsmino_1", private val isHost: Boolean = true) {
     private val firebaseDataSource = FirebaseGameDataSource()
-    private val _session = MutableStateFlow(createInitialSession(roomId, isHost))
+    private val _session = MutableStateFlow(GameSession(roomId = roomId))
     val session: Flow<GameSession> = _session.asStateFlow()
+    private val scope = CoroutineScope(Dispatchers.IO)
 
-    private fun createInitialSession(roomId: String, isHost: Boolean): GameSession {
+    init {
+        scope.launch {
+            val remoteSession = firebaseDataSource.getExistingSession(roomId)
+            if (remoteSession == null && isHost) {
+                val initial = createInitialSession(roomId, "Jugador 1 (Tu)", "Oponente (Bot/Online)")
+                _session.value = initial
+            } else if (remoteSession != null) {
+                _session.value = remoteSession
+            }
+
+            firebaseDataSource.observeGameSession(roomId).collect { updatedSession ->
+                if (updatedSession != null) {
+                    _session.value = updatedSession
+                }
+            }
+        }
+    }
+
+    fun cleanup() {
+        scope.cancel()
+    }
+
+    private fun createInitialSession(
+        roomId: String, 
+        p1Name: String, 
+        p2Name: String, 
+        p1Score: Int = 0, 
+        p2Score: Int = 0, 
+        nextRound: Int = 1
+    ): GameSession {
         val allTiles = mutableListOf<Tile>()
         for (i in 0..6) {
             for (j in i..6) {
@@ -25,8 +59,8 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
         val p2Tiles = allTiles.subList(7, 14).toList()
         val remainingBoneyard = allTiles.subList(14, 28).toList()
 
-        val p1 = Player(id = "p1", name = "Jugador 1 (Tu)", tiles = p1Tiles, score = 0)
-        val p2 = Player(id = "p2", name = if (isHost) "Oponente (Bot/Online)" else "Jugador 2", tiles = p2Tiles, score = 0)
+        val p1 = Player(id = "p1", name = p1Name, tiles = p1Tiles, score = p1Score)
+        val p2 = Player(id = "p2", name = p2Name, tiles = p2Tiles, score = p2Score)
 
         val initialSession = GameSession(
             roomId = roomId,
@@ -36,7 +70,7 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
             boneyard = remainingBoneyard,
             status = GameStatus.PLAYING,
             activeEvent = RandomEvent("ev_init", "Inicio de Partida Online", "Sala [$roomId] conectada correctamente.", "INFO"),
-            roundNumber = 1
+            roundNumber = nextRound
         )
 
         firebaseDataSource.syncGameSession(roomId, initialSession)
@@ -98,7 +132,7 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
                 val alignedTile = if (tileToCheck.right == firstLeft) {
                     tileToCheck
                 } else if (tileToCheck.left == firstLeft) {
-                    tileToCheck.copy(left = tileToCheck.right, right = tile.left)
+                    tileToCheck.copy(left = tileToCheck.right, right = tileToCheck.left)
                 } else {
                     tileToCheck
                 }
@@ -108,9 +142,9 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
 
         val updatedTiles = if (useWildcard) {
             val target = player.tiles.firstOrNull { (it.left == tile.left && it.right == tile.right) || (it.left == tile.right && it.right == tile.left) }
-            if (target != null) player.tiles.filterNot { it.id == target.id } else player.tiles
+            if (target != null) player.tiles.filterNot { it.id == target.id } else return Pair(false, "Ficha objetivo no encontrada en la mano.")
         } else {
-            if (matchingTile != null) player.tiles.filterNot { it.id == matchingTile.id } else player.tiles
+            if (matchingTile != null) player.tiles.filterNot { it.id == matchingTile.id } else return Pair(false, "No posees esta ficha.")
         }
 
         val isFinished = updatedTiles.isEmpty()
@@ -124,7 +158,11 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
         val finalStatus = if (isFinished) GameStatus.FINISHED else current.status
 
         if (isFinished) {
-            val opponentTilesSum = updatedPlayers.filter { it.id != playerId }.sumOf { p -> p.tiles.sumOf { it.sumPoints() } }
+            val opponentTilesSum = updatedPlayers.filter { it.id != playerId }.sumOf { p -> 
+                p.tiles.sumOf { t -> 
+                    if (current.activeEvent?.id == "ev_loca" && t.isDouble()) t.sumPoints() * 2 else t.sumPoints() 
+                } 
+            }
             finalPlayers = updatedPlayers.map { p ->
                 if (p.id == playerId) p.copy(score = p.score + opponentTilesSum + 50) else p
             }
@@ -134,10 +172,26 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
             generateRandomEvent()
         } else current.activeEvent
 
+        var finalNextTurnId = nextTurnId
+        if (possibleEvent?.id == "ev_bonus" && possibleEvent != current.activeEvent) {
+            finalPlayers = finalPlayers.map { p ->
+                if (p.id == playerId) p.copy(score = p.score + 20) else p
+            }
+        } else if (possibleEvent?.id == "ev_inv" && possibleEvent != current.activeEvent) {
+            finalNextTurnId = playerId
+        }
+        
+        val finalBoneyard = if (possibleEvent?.id == "ev_pozo" && possibleEvent != current.activeEvent) {
+            current.boneyard.shuffled()
+        } else {
+            current.boneyard
+        }
+
         val newSession = current.copy(
             board = newBoard,
             players = finalPlayers,
-            currentTurnPlayerId = if (isFinished) playerId else nextTurnId,
+            boneyard = finalBoneyard,
+            currentTurnPlayerId = if (isFinished) playerId else finalNextTurnId,
             status = finalStatus,
             activeEvent = possibleEvent
         )
@@ -166,6 +220,14 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
 
         val player = current.players.find { it.id == playerId } ?: return Pair(false, "Jugador no encontrado.")
         
+        val leftEnd = current.getLeftEnd()
+        val rightEnd = current.getRightEnd()
+        val canPlay = current.board.isEmpty() || player.tiles.any { t -> 
+            (leftEnd != null && (t.left == leftEnd || t.right == leftEnd)) || 
+            (rightEnd != null && (t.left == rightEnd || t.right == rightEnd)) 
+        }
+        if (canPlay) return Pair(false, "Tienes fichas jugables, no puedes robar del pozo.")
+        
         val drawnTile = current.boneyard.first()
         val newBoneyard = current.boneyard.drop(1)
 
@@ -176,6 +238,33 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
             players = updatedPlayers,
             boneyard = newBoneyard,
             activeEvent = RandomEvent("ev_draw", "Robo en el Pozo", "${player.name} ha robado una ficha del pozo.", "INFO")
+        )
+        val evaluatedSession = evaluateTranca(newSession)
+        _session.value = evaluatedSession
+        firebaseDataSource.syncGameSession(evaluatedSession.roomId, evaluatedSession)
+        return Pair(true, null)
+    }
+
+    fun passTurn(playerId: String): Pair<Boolean, String?> {
+        val current = _session.value
+        if (current.currentTurnPlayerId != playerId) return Pair(false, "No es tu turno.")
+        if (current.boneyard.isNotEmpty()) return Pair(false, "Aun hay fichas en el pozo.")
+        
+        val player = current.players.find { it.id == playerId } ?: return Pair(false, "Jugador no encontrado.")
+        val leftEnd = current.getLeftEnd()
+        val rightEnd = current.getRightEnd()
+        
+        val canPlay = current.board.isEmpty() || player.tiles.any { t -> 
+            (leftEnd != null && (t.left == leftEnd || t.right == leftEnd)) || 
+            (rightEnd != null && (t.left == rightEnd || t.right == rightEnd)) 
+        }
+        
+        if (canPlay) return Pair(false, "Tienes fichas jugables, no puedes pasar el turno.")
+        
+        val nextTurnId = current.players.first { it.id != playerId }.id
+        val newSession = current.copy(
+            currentTurnPlayerId = nextTurnId,
+            activeEvent = RandomEvent("ev_pass", "Paso de Turno", "El jugador no tiene fichas validas y el pozo esta vacio.", "INFO")
         )
         val evaluatedSession = evaluateTranca(newSession)
         _session.value = evaluatedSession
@@ -211,29 +300,7 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
                 activeEvent = RandomEvent("ev_wild", "Comodin Activo", "${player.name} puede colocar cualquier ficha sin restriccion.", "POWER")
             }
             PowerType.SWAP -> {
-                val opponent = current.players.firstOrNull { it.id != playerId }
-                if (opponent != null && opponent.tiles.isNotEmpty() && player.tiles.isNotEmpty()) {
-                    val myTileToGive = player.tiles.first()
-                    val oppTileToGet = opponent.tiles.random()
-
-                    val newMyTiles = player.tiles.filterNot { it.id == myTileToGive.id } + oppTileToGet
-                    val newOppTiles = opponent.tiles.filterNot { it.id == oppTileToGet.id } + myTileToGive
-
-                    val swappedPlayers = updatedPlayers.map { p ->
-                        when (p.id) {
-                            playerId -> p.copy(tiles = newMyTiles, powerCounts = updatedPowers)
-                            opponent.id -> p.copy(tiles = newOppTiles)
-                            else -> p
-                        }
-                    }
-                    val newSession = current.copy(
-                        players = swappedPlayers,
-                        activeEvent = RandomEvent("ev_swap", "Intercambio Mistico", "Se ha intercambiado una ficha con el oponente.", "POWER")
-                    )
-                    _session.value = newSession
-                    firebaseDataSource.syncGameSession(newSession.roomId, newSession)
-                    return Pair(true, null)
-                }
+                return Pair(false, "El Intercambio Mistico requiere seleccionar una ficha de tu mano.")
             }
         }
 
@@ -265,7 +332,7 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
         val myMatching = player.tiles.find { 
             (it.left == tileToGive.left && it.right == tileToGive.right) || 
             (it.left == tileToGive.right && it.right == tileToGive.left) 
-        } ?: player.tiles.first()
+        } ?: return Pair(false, "Ficha seleccionada no valida.")
 
         val oppTileToGet = opponent.tiles.random()
 
@@ -304,8 +371,8 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
         val p2CanPlay = p2.tiles.any { t -> (leftEnd != null && (t.left == leftEnd || t.right == leftEnd)) || (rightEnd != null && (t.left == rightEnd || t.right == rightEnd)) }
 
         if (!p1CanPlay && !p2CanPlay) {
-            val p1Sum = p1.tiles.sumOf { it.sumPoints() }
-            val p2Sum = p2.tiles.sumOf { it.sumPoints() }
+            val p1Sum = p1.tiles.sumOf { if (session.activeEvent?.id == "ev_loca" && it.isDouble()) it.sumPoints() * 2 else it.sumPoints() }
+            val p2Sum = p2.tiles.sumOf { if (session.activeEvent?.id == "ev_loca" && it.isDouble()) it.sumPoints() * 2 else it.sumPoints() }
 
             val p1PowersUsed = 5 - p1.powerCounts.values.sum()
             val p2PowersUsed = 5 - p2.powerCounts.values.sum()
@@ -322,8 +389,14 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
                 }
             }
 
+            val opponentTilesSum = session.players.filter { it.id != winnerId }.sumOf { p -> 
+                p.tiles.sumOf { t -> 
+                    if (session.activeEvent?.id == "ev_loca" && t.isDouble()) t.sumPoints() * 2 else t.sumPoints() 
+                } 
+            }
+
             val updatedPlayers = session.players.map { p ->
-                if (p.id == winnerId) p.copy(score = p.score + 50) else p
+                if (p.id == winnerId) p.copy(score = p.score + opponentTilesSum + 50) else p
             }
 
             return session.copy(
@@ -357,6 +430,17 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
     }
 
     fun restartGame() {
-        _session.value = createInitialSession(roomId, isHost)
+        val current = _session.value
+        val p1 = current.players.find { it.id == "p1" }
+        val p2 = current.players.find { it.id == "p2" }
+        
+        val p1Score = p1?.score ?: 0
+        val p2Score = p2?.score ?: 0
+        val p1Name = p1?.name ?: "Jugador 1"
+        val p2Name = p2?.name ?: "Jugador 2"
+        val nextRound = current.roundNumber + 1
+        
+        val newSession = createInitialSession(roomId, p1Name, p2Name, p1Score, p2Score, nextRound)
+        _session.value = newSession
     }
 }
