@@ -21,7 +21,8 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
         scope.launch {
             val remoteSession = firebaseDataSource.getExistingSession(roomId)
             if (remoteSession == null && isHost) {
-                val initial = createInitialSession(roomId, "Jugador 1 (Tu)", "Oponente (Bot/Online)")
+                val oppName = if (roomId == "room_offline_bot") "Bot (IA)" else "Oponente"
+                val initial = createInitialSession(roomId, "Jugador 1 (Tu)", oppName)
                 _session.value = initial
             } else if (remoteSession != null) {
                 _session.value = remoteSession
@@ -62,6 +63,9 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
         val p1 = Player(id = "p1", name = p1Name, tiles = p1Tiles, score = p1Score)
         val p2 = Player(id = "p2", name = p2Name, tiles = p2Tiles, score = p2Score)
 
+        val msgTitle = if (roomId == "room_offline_bot") "Partida Local vs Bot" else "Inicio de Partida Online"
+        val msgDesc = if (roomId == "room_offline_bot") "Practica tus estrategias contra la IA." else "Sala [$roomId] conectada correctamente."
+
         val initialSession = GameSession(
             roomId = roomId,
             board = emptyList(),
@@ -69,7 +73,7 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
             currentTurnPlayerId = p1.id,
             boneyard = remainingBoneyard,
             status = GameStatus.PLAYING,
-            activeEvent = RandomEvent("ev_init", "Inicio de Partida Online", "Sala [$roomId] conectada correctamente.", "INFO"),
+            activeEvent = RandomEvent("ev_init", msgTitle, msgDesc, "INFO"),
             roundNumber = nextRound
         )
 
@@ -105,8 +109,9 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
             val canConnectRight = rightEnd != null && (tileToCheck.left == rightEnd || tileToCheck.right == rightEnd)
 
             val isValid = when (direction) {
-                BoardDirection.LEFT, BoardDirection.UP -> canConnectLeft
-                BoardDirection.RIGHT, BoardDirection.DOWN -> canConnectRight
+                BoardDirection.LEFT -> canConnectLeft
+                BoardDirection.RIGHT -> canConnectRight
+                else -> false // UP y DOWN deprecados
             }
             if (!isValid) {
                 return Pair(false, "Jugada invalida: La ficha no coincide con los extremos del tablero.")
@@ -285,7 +290,7 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
         val updatedPlayers = current.players.map { if (it.id == playerId) it.copy(powerCounts = updatedPowers) else it }
 
         var nextTurn = current.currentTurnPlayerId
-        var activeEvent = current.activeEvent
+        val activeEvent: RandomEvent
 
         when (powerType) {
             PowerType.SKIP -> {
@@ -293,8 +298,8 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
                 activeEvent = RandomEvent("ev_skip", "Poder Salto", "${player.name} ha saltado el turno del rival.", "POWER")
             }
             PowerType.REVERSE -> {
-                nextTurn = playerId
-                activeEvent = RandomEvent("ev_rev", "Poder Inversion", "El orden de la partida ha sido invertido.", "POWER")
+                nextTurn = current.players.first { it.id != playerId }.id
+                activeEvent = RandomEvent("ev_rev", "Poder Inversion", "El orden de la partida ha sido invertido. Turno del oponente.", "POWER")
             }
             PowerType.WILDCARD -> {
                 activeEvent = RandomEvent("ev_wild", "Comodin Activo", "${player.name} puede colocar cualquier ficha sin restriccion.", "POWER")
@@ -347,12 +352,16 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
             }
         }
 
+        val nextTurnId = current.players.first { it.id != playerId }.id
+
         val newSession = current.copy(
             players = swappedPlayers,
+            currentTurnPlayerId = nextTurnId,
             activeEvent = RandomEvent("ev_swap", "Intercambio Mistico", "${player.name} intercambio su ficha [${myMatching.left}|${myMatching.right}] por una ficha secreta del rival.", "POWER")
         )
-        _session.value = newSession
-        firebaseDataSource.syncGameSession(newSession.roomId, newSession)
+        val evaluatedSession = evaluateTranca(newSession)
+        _session.value = evaluatedSession
+        firebaseDataSource.syncGameSession(evaluatedSession.roomId, evaluatedSession)
         return Pair(true, null)
     }
 
@@ -378,22 +387,20 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
             val p2PowersUsed = 5 - p2.powerCounts.values.sum()
 
             val (winnerId, desc) = when {
-                p1Sum < p2Sum -> Pair(p1.id, "¡Tranca de juego! Ganó ${p1.name} por menor acumulado de puntos (${p1Sum} vs ${p2Sum}).")
-                p2Sum < p1Sum -> Pair(p2.id, "¡Tranca de juego! Ganó ${p2.name} por menor acumulado de puntos (${p2Sum} vs ${p1Sum}).")
+                p1Sum < p2Sum -> Pair(p1.id, "¡Tranca de juego! Ganó ${p1.name} por menor acumulado de puntos ($p1Sum vs $p2Sum).")
+                p2Sum < p1Sum -> Pair(p2.id, "¡Tranca de juego! Ganó ${p2.name} por menor acumulado de puntos ($p2Sum vs $p1Sum).")
                 else -> {
                     when {
-                        p1PowersUsed < p2PowersUsed -> Pair(p1.id, "¡Tranca y empate de puntos! Ganó ${p1.name} por usar menos poderes (${p1PowersUsed} vs ${p2PowersUsed}).")
-                        p2PowersUsed < p1PowersUsed -> Pair(p2.id, "¡Tranca y empate de puntos! Ganó ${p2.name} por usar menos poderes (${p2PowersUsed} vs ${p1PowersUsed}).")
+                        p1PowersUsed < p2PowersUsed -> Pair(p1.id, "¡Tranca y empate de puntos! Ganó ${p1.name} por usar menos poderes ($p1PowersUsed vs $p2PowersUsed).")
+                        p2PowersUsed < p1PowersUsed -> Pair(p2.id, "¡Tranca y empate de puntos! Ganó ${p2.name} por usar menos poderes ($p2PowersUsed vs $p1PowersUsed).")
                         else -> Pair(p1.id, "¡Tranca y empate perfecto en puntos y poderes!")
                     }
                 }
             }
 
-            val opponentTilesSum = session.players.filter { it.id != winnerId }.sumOf { p -> 
-                p.tiles.sumOf { t -> 
-                    if (session.activeEvent?.id == "ev_loca" && t.isDouble()) t.sumPoints() * 2 else t.sumPoints() 
-                } 
-            }
+            val opponentTilesSum = session.players.firstOrNull { it.id != winnerId }?.tiles?.sumOf { t -> 
+                if (session.activeEvent?.id == "ev_loca" && t.isDouble()) t.sumPoints() * 2 else t.sumPoints() 
+            } ?: 0
 
             val updatedPlayers = session.players.map { p ->
                 if (p.id == winnerId) p.copy(score = p.score + opponentTilesSum + 50) else p
@@ -429,18 +436,4 @@ class GameRepository(private val roomId: String = "room_godsmino_1", private val
         return Pair(true, null)
     }
 
-    fun restartGame() {
-        val current = _session.value
-        val p1 = current.players.find { it.id == "p1" }
-        val p2 = current.players.find { it.id == "p2" }
-        
-        val p1Score = p1?.score ?: 0
-        val p2Score = p2?.score ?: 0
-        val p1Name = p1?.name ?: "Jugador 1"
-        val p2Name = p2?.name ?: "Jugador 2"
-        val nextRound = current.roundNumber + 1
-        
-        val newSession = createInitialSession(roomId, p1Name, p2Name, p1Score, p2Score, nextRound)
-        _session.value = newSession
-    }
 }

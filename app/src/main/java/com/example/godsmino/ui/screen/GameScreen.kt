@@ -9,9 +9,14 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,6 +24,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -30,8 +36,8 @@ import com.example.godsmino.data.model.GameStatus
 import com.example.godsmino.data.model.Player
 import com.example.godsmino.ui.components.*
 import com.example.godsmino.ui.viewmodel.GameViewModel
+// import androidx.compose.ui.zIndex.zIndex
 import com.example.godsmino.util.SoundManager
-import kotlin.math.abs
 
 @Composable
 fun GameScreen(
@@ -114,38 +120,48 @@ fun GameScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .systemBarsPadding()
                 .padding(10.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // 1. TOP SECTION: Opponent Info & Room ID + Abandon Button
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (opponent != null) {
-                    OpponentHeaderView(opponent = opponent, isTurn = !isMyTurn)
-                }
+            Column(
+                modifier = Modifier.fillMaxWidth(), 
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Top Bar with Room info and Abandon button
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFF1A1A1A).copy(alpha = 0.8f), RoundedCornerShape(12.dp))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = if (session.roomId == "room_offline_bot") "Local vs Bot" else "Sala: ${session.roomId}",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = Color.LightGray
+                    )
+                    Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            text = "Sala: ${session.roomId}",
-                            fontSize = 10.sp,
-                            color = Color.LightGray.copy(alpha = 0.7f)
+                            text = "Ronda: ${session.roundNumber}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFD4AF37)
                         )
-                        TextButton(
+                        IconButton(
                             onClick = { showQuitDialog = true },
-                            contentPadding = PaddingValues(0.dp)
+                            modifier = Modifier.size(24.dp)
                         ) {
-                            Text("Abandonar", fontSize = 10.sp, color = Color(0xFFFF5252), fontWeight = FontWeight.Bold)
+                            Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Abandonar", tint = Color(0xFFFF5252), modifier = Modifier.size(18.dp))
                         }
                     }
-                    Text(
-                        text = if (isMyTurn) "Tu Turno (Juega una ficha)" else "Turno del Oponente (Pensando...)",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isMyTurn) Color(0xFFD4AF37) else Color.LightGray
-                    )
+                }
+
+                if (opponent != null) {
+                    OpponentHeaderView(opponent = opponent, isTurn = !isMyTurn)
                 }
             }
 
@@ -176,59 +192,24 @@ fun GameScreen(
             // Random Event Banner
             RandomEventBanner(event = session.activeEvent)
 
-            // 2. CENTER SECTION: Board + Powers Sidebar
-            Row(
+            // 2. CENTER SECTION: Board 
+            // Eliminado el Sidebar de poderes lateral para dar más espacio horizontal al tablero.
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .weight(1f)
+                    .padding(vertical = 4.dp),
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    GameBoardView(
-                        board = session.board,
-                        themeIndex = uiState.boardThemeIndex,
-                        modifier = Modifier.fillMaxSize(),
-                        onToggleTheme = { viewModel.toggleBoardTheme() }
-                    )
-                }
-
-                if (player1 != null) {
-                    Column(
-                        modifier = Modifier
-                            .width(85.dp)
-                            .fillMaxHeight()
-                            .background(Color(0xFF141414).copy(alpha = 0.9f), RoundedCornerShape(12.dp))
-                            .border(1.dp, Color(0xFF333333), RoundedCornerShape(12.dp))
-                            .padding(6.dp),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            text = "Poderes",
-                            color = Color(0xFFD4AF37),
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                        PowerControlsVerticalView(
-                            powers = player1.powerCounts,
-                            selectedPower = uiState.selectedPower,
-                            onPowerSelected = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.requestUsePower(it)
-                            }
-                        )
-                    }
-                }
+                GameBoardView(
+                    board = session.board,
+                    themeIndex = uiState.boardThemeIndex,
+                    modifier = Modifier.fillMaxSize(),
+                    onToggleTheme = { viewModel.toggleBoardTheme() }
+                )
             }
 
-            // 3. BOTTOM SECTION: Draggable Player Hand & 4 Direction Action Chips
+            // 3. BOTTOM SECTION: Powers, Player Hand & Action Chips
             if (session.status == GameStatus.FINISHED) {
                 Box(
                     modifier = Modifier
@@ -253,12 +234,13 @@ fun GameScreen(
                             onClick = {
                                 SoundManager.playClickSound()
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                viewModel.restartGame()
+                                // We exit the game and return to the lobby instead of trying to restart the flow
+                                onBackToLobby()
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4AF37)),
                             shape = RoundedCornerShape(10.dp)
                         ) {
-                            Text(text = "Jugar Nueva Partida", color = Color.Black, fontWeight = FontWeight.Bold)
+                            Text(text = "Volver al Menú Principal", color = Color.Black, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -266,6 +248,7 @@ fun GameScreen(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
+                    // .zIndex(10f)
                         .background(Color(0xFF141414).copy(alpha = 0.85f), RoundedCornerShape(16.dp))
                         .border(1.dp, Color(0xFF2C2C2C), RoundedCornerShape(16.dp))
                         .padding(10.dp),
@@ -277,7 +260,7 @@ fun GameScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = if (isMyTurn) "Tu Turno: Arrastra o usa botones" else "Esperando jugada del oponente...",
+                            text = if (isMyTurn) "Tu Turno: Toca una ficha y elige Lado (◀ o ▶)" else "Esperando jugada del oponente...",
                             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
                             color = if (isMyTurn) Color(0xFFD4AF37) else Color.LightGray,
                             fontSize = 11.sp
@@ -289,9 +272,42 @@ fun GameScreen(
                         )
                     }
 
+                    // Powers Header (Horizontal)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        player1.powerCounts.forEach { (power, count) ->
+                            val isSelected = uiState.selectedPower == power
+                            val color = if (count > 0) (if (isSelected) Color(0xFF4CAF50) else Color(0xFFD4AF37)) else Color.DarkGray
+                            IconButton(
+                                onClick = {
+                                    if (count > 0) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                        viewModel.requestUsePower(power)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(Color(0xFF222222), CircleShape)
+                                    .border(1.dp, color, CircleShape)
+                            ) {
+                                Box(contentAlignment = Alignment.BottomEnd) {
+                                    Icon(power.icon, contentDescription = power.displayName, tint = color, modifier = Modifier.size(18.dp).align(Alignment.Center))
+                                    if (count > 0) {
+                                        Text(text = count.toString(), color = Color.White, fontSize = 9.sp, modifier = Modifier.offset(x = 6.dp, y = 6.dp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Draggable Player Hand
                     LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 4.dp),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
                         items(player1.tiles) { tile ->
@@ -302,24 +318,11 @@ fun GameScreen(
                                 DominoTileView(
                                     tile = tile,
                                     isSelected = uiState.selectedTile == tile,
-                                    isDraggable = isMyTurn,
+                                    isClickable = isMyTurn,
                                     onClick = {
                                         if (isMyTurn) {
                                             SoundManager.playClickSound()
                                             viewModel.selectTile(tile)
-                                        }
-                                    },
-                                    onDragEnd = { offset ->
-                                        if (isMyTurn) {
-                                            val direction = when {
-                                                offset.y < -70f && abs(offset.y) > abs(offset.x) -> BoardDirection.UP
-                                                offset.y > 70f && abs(offset.y) > abs(offset.x) -> BoardDirection.DOWN
-                                                offset.x < -60f -> BoardDirection.LEFT
-                                                offset.x > 60f -> BoardDirection.RIGHT
-                                                else -> BoardDirection.RIGHT
-                                            }
-                                            SoundManager.playTileClack()
-                                            viewModel.playSpecificTile(tile, direction)
                                         }
                                     }
                                 )
@@ -327,10 +330,10 @@ fun GameScreen(
                         }
                     }
 
-                    // 4 Direction Quick Buttons
+                    // 4 Direction Quick Buttons (Replaced with icon chips)
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         if (session.boneyardSize > 0) {
@@ -343,11 +346,11 @@ fun GameScreen(
                                     }
                                 },
                                 enabled = isMyTurn,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC5A880)),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFC5A880), disabledContainerColor = Color.DarkGray),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Text(text = "Robar Pozo", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.Black)
+                                Text(text = "Robar Ficha", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.Black)
                             }
                         } else {
                             Button(
@@ -359,72 +362,35 @@ fun GameScreen(
                                     }
                                 },
                                 enabled = isMyTurn,
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C)),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB71C1C), disabledContainerColor = Color.DarkGray),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                                 shape = RoundedCornerShape(8.dp)
                             ) {
-                                Text(text = "Pasar Turno", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                                Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(text = "Pasar Turno", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                             }
                         }
 
-                        Button(
-                            onClick = {
-                                if (isMyTurn) {
-                                    SoundManager.playTileClack()
-                                    viewModel.playTile(BoardDirection.UP)
-                                }
-                            },
-                            enabled = isMyTurn,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263238)),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(text = "Arriba", fontSize = 10.sp, color = Color.White)
-                        }
-
-                        Button(
-                            onClick = {
-                                if (isMyTurn) {
-                                    SoundManager.playTileClack()
-                                    viewModel.playTile(BoardDirection.DOWN)
-                                }
-                            },
-                            enabled = isMyTurn,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF263238)),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(text = "Abajo", fontSize = 10.sp, color = Color.White)
-                        }
-
-                        Button(
-                            onClick = {
-                                if (isMyTurn) {
-                                    SoundManager.playTileClack()
-                                    viewModel.playTile(BoardDirection.LEFT)
-                                }
-                            },
-                            enabled = isMyTurn,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20)),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(text = "Izquierda", fontSize = 10.sp, color = Color.White)
-                        }
-
-                        Button(
-                            onClick = {
-                                if (isMyTurn) {
-                                    SoundManager.playTileClack()
-                                    viewModel.playTile(BoardDirection.RIGHT)
-                                }
-                            },
-                            enabled = isMyTurn,
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B5E20)),
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                            shape = RoundedCornerShape(8.dp)
-                        ) {
-                            Text(text = "Derecha", fontSize = 10.sp, color = Color.White)
+                        // 2 Direction Icon Buttons (Left and Right ONLY)
+                        val buttonColor = Color(0xFF263238)
+                        val highlightColor = Color(0xFF1B5E20)
+                        
+                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                            IconButton(
+                                onClick = { if (isMyTurn) { SoundManager.playTileClack(); viewModel.playTile(BoardDirection.LEFT) } },
+                                enabled = isMyTurn && uiState.selectedTile != null,
+                                modifier = Modifier.background(if (uiState.selectedTile != null) highlightColor else buttonColor, RoundedCornerShape(8.dp)).size(48.dp)
+                            ) {
+                                Text("◀", color = Color.White, fontSize = 24.sp)
+                            }
+                            IconButton(
+                                onClick = { if (isMyTurn) { SoundManager.playTileClack(); viewModel.playTile(BoardDirection.RIGHT) } },
+                                enabled = isMyTurn && uiState.selectedTile != null,
+                                modifier = Modifier.background(if (uiState.selectedTile != null) highlightColor else buttonColor, RoundedCornerShape(8.dp)).size(48.dp)
+                            ) {
+                                Text("▶", color = Color.White, fontSize = 24.sp)
+                            }
                         }
                     }
                 }

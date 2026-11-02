@@ -12,6 +12,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -30,6 +32,7 @@ fun GameBoardView(
     onToggleTheme: () -> Unit = {}
 ) {
     val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
 
     val (colors, borderColor, themeName) = when (themeIndex) {
         1 -> Triple(
@@ -90,63 +93,76 @@ fun GameBoardView(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Arrastra o selecciona una ficha de tu mano para colocarla",
+                    text = "Selecciona una ficha de tu mano para colocarla",
                     color = Color(0xFFFFD700),
                     fontSize = 12.sp
                 )
             }
         } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .horizontalScroll(scrollState),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                // Drop Target Left Zone
-                Box(
+            // Box to overlay the floating indicators on top of the scrolling row
+            Box(modifier = Modifier.fillMaxSize()) {
+                Row(
                     modifier = Modifier
-                        .width(48.dp)
-                        .height(84.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFFFD700).copy(alpha = 0.25f))
-                        .border(2.dp, Color(0xFFFFD700), RoundedCornerShape(8.dp)),
-                    contentAlignment = Alignment.Center
+                        .fillMaxSize()
+                        .horizontalScroll(scrollState)
+                        .padding(horizontal = 40.dp), // Give space so tiles don't hide completely behind indicators at the absolute edges
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text(text = "Izq", color = Color(0xFFFFD700), fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                }
+                    // Chain Rendering
+                    board.forEach { tile ->
+                        val isHorizontalTile = !tile.isDouble()
 
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // Chain Rendering
-                board.forEach { tile ->
-                    val isHorizontalTile = !tile.isDouble()
-
-                    AnimatedVisibility(
-                        visible = true,
-                        enter = fadeIn()
-                    ) {
-                        DominoTileView(
-                            tile = tile,
-                            isHorizontal = isHorizontalTile,
-                            isDraggable = false
-                        )
+                        AnimatedVisibility(
+                            visible = true,
+                            enter = fadeIn()
+                        ) {
+                            DominoTileView(
+                                tile = tile,
+                                isHorizontal = isHorizontalTile
+                            )
+                        }
                     }
                 }
 
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // Drop Target Right Zone
+                // Left Floating Indicator
+                val leftValue = board.firstOrNull()?.left?.toString() ?: ""
                 Box(
                     modifier = Modifier
-                        .width(48.dp)
-                        .height(84.dp)
+                        .align(Alignment.CenterStart)
+                        .padding(start = 4.dp)
+                        .width(36.dp)
+                        .height(64.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color(0xFFFFD700).copy(alpha = 0.25f))
-                        .border(2.dp, Color(0xFFFFD700), RoundedCornerShape(8.dp)),
+                        .background(Color.Black.copy(alpha = 0.7f))
+                        .border(1.5.dp, Color(0xFFFFD700), RoundedCornerShape(8.dp))
+                        .clickable { coroutineScope.launch { scrollState.animateScrollTo(0) } },
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "Der", color = Color(0xFFFFD700), fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(text = "◀", color = Color(0xFFFFD700), fontSize = 10.sp)
+                        Text(text = leftValue, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    }
+                }
+
+                // Right Floating Indicator
+                val rightValue = board.lastOrNull()?.right?.toString() ?: ""
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 4.dp)
+                        .width(36.dp)
+                        .height(64.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color.Black.copy(alpha = 0.7f))
+                        .border(1.5.dp, Color(0xFFFFD700), RoundedCornerShape(8.dp))
+                        .clickable { coroutineScope.launch { scrollState.animateScrollTo(scrollState.maxValue) } },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(text = "▶", color = Color(0xFFFFD700), fontSize = 10.sp)
+                        Text(text = rightValue, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                    }
                 }
             }
         }

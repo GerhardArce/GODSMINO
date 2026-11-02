@@ -4,7 +4,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
@@ -21,7 +21,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.zIndex
 import com.example.godsmino.data.model.Tile
 import com.example.godsmino.util.SoundManager
 
@@ -30,22 +29,18 @@ fun DominoTileView(
     tile: Tile,
     isSelected: Boolean = false,
     isHorizontal: Boolean = false,
-    isDraggable: Boolean = false,
-    onClick: () -> Unit = {},
-    onDragEnd: (Offset) -> Unit = {}
+    isClickable: Boolean = false,
+    onClick: () -> Unit = {}
 ) {
     val haptic = LocalHapticFeedback.current
-    var offsetX by remember { mutableFloatStateOf(0f) }
-    var offsetY by remember { mutableFloatStateOf(0f) }
-    var isDragging by remember { mutableStateOf(false) }
 
     val scale by animateFloatAsState(
-        targetValue = if (isDragging || isSelected) 1.28f else 1.0f,
+        targetValue = if (isSelected) 1.15f else 1.0f,
         label = "tileScale"
     )
 
     // High-end professional physical ivory bone gradient
-    val backgroundColor = if (isSelected || isDragging) {
+    val backgroundColor = if (isSelected) {
         Brush.verticalGradient(
             listOf(Color(0xFFFFFFF8), Color(0xFFFFF8E1), Color(0xFFFFECB3))
         )
@@ -55,57 +50,32 @@ fun DominoTileView(
         )
     }
 
-    val borderColor = if (isSelected || isDragging) Color(0xFFD4AF37) else Color(0xFFB5A898)
-    val borderWidth = if (isSelected || isDragging) 2.5.dp else 1.2.dp
+    val borderColor = if (isSelected) Color(0xFFD4AF37) else Color(0xFFB5A898)
+    val borderWidth = if (isSelected) 2.5.dp else 1.2.dp
 
     val width = if (isHorizontal) 104.dp else 58.dp
     val height = if (isHorizontal) 58.dp else 104.dp
 
     Box(
         modifier = Modifier
-            .zIndex(if (isDragging) 9999f else 0f)
-            .graphicsLayer {
-                translationX = offsetX
-                translationY = offsetY
-            }
             .padding(3.dp)
             .width(width)
             .height(height)
             .scale(scale)
-            .shadow(if (isDragging || isSelected) 24.dp else 6.dp, RoundedCornerShape(10.dp))
+            .shadow(if (isSelected) 24.dp else 6.dp, RoundedCornerShape(10.dp))
             .clip(RoundedCornerShape(10.dp))
             .background(backgroundColor)
             .border(borderWidth, borderColor, RoundedCornerShape(10.dp))
             .then(
-                if (isDraggable) {
-                    Modifier.pointerInput(Unit) {
-                        detectDragGestures(
-                            onDragStart = {
-                                isDragging = true
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                SoundManager.playClickSound()
-                                onClick()
-                            },
-                            onDragEnd = {
-                                isDragging = false
-                                SoundManager.playTileClack()
-                                onDragEnd(Offset(offsetX, offsetY))
-                                offsetX = 0f
-                                offsetY = 0f
-                            },
-                            onDragCancel = {
-                                isDragging = false
-                                offsetX = 0f
-                                offsetY = 0f
-                            },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                offsetX += dragAmount.x
-                                offsetY += dragAmount.y
-                            }
-                        )
+                if (isClickable) {
+                    Modifier.clickable {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        SoundManager.playClickSound()
+                        onClick()
                     }
-                } else Modifier
+                } else {
+                    Modifier
+                }
             )
     ) {
         if (isHorizontal) {
