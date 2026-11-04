@@ -19,17 +19,28 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.godsmino.data.model.GameSession
 import com.example.godsmino.data.model.Player
 import kotlinx.coroutines.delay
 
 @Composable
 fun CoinTossDialog(
     onTossFinished: (String) -> Unit,
-    players: List<Player>
+    players: List<Player> = emptyList(),
+    session: GameSession? = null
 ) {
     var isTossing by remember { mutableStateOf(true) }
     var resultText by remember { mutableStateOf("🪙 ¡Lanzando moneda al aire para elegir quién inicia! 🪙") }
     var winningPlayerName by remember { mutableStateOf("") }
+
+    val activePlayers = session?.players ?: players
+    val deterministicWinnerId = session?.activeEvent?.effectType?.takeIf { it == "p1" || it == "p2" }
+        ?: activePlayers.firstOrNull()?.id ?: "p1"
+
+    val winner = activePlayers.find { it.id == deterministicWinnerId } ?: activePlayers.firstOrNull()
+    val isP1Winner = winner?.id == "p1"
+    val coinFaceText = if (isP1Winner) "¡Cara!" else "¡Cruz!"
+    val coinSymbol = if (isP1Winner) "👑" else "⚔️"
 
     val infiniteTransition = rememberInfiniteTransition(label = "coin_toss")
     val angle by infiniteTransition.animateFloat(
@@ -52,14 +63,13 @@ fun CoinTossDialog(
         label = "coin_scale"
     )
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(deterministicWinnerId) {
         delay(3200)
         isTossing = false
-        val winner = players.randomOrNull() ?: players.firstOrNull()
         winningPlayerName = winner?.name?.ifBlank { "Jugador 1" } ?: "Jugador 1"
-        resultText = "✨ ¡Cara! $winningPlayerName ganó el volado e inicia la partida. ✨"
+        resultText = "✨ $coinFaceText $winningPlayerName ganó el volado e inicia la partida. ✨"
         delay(2000)
-        onTossFinished(winner?.id ?: "p1")
+        onTossFinished(deterministicWinnerId)
     }
 
     Box(
@@ -113,7 +123,7 @@ fun CoinTossDialog(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (isTossing) "🪙" else "👑",
+                        text = if (isTossing) "🪙" else coinSymbol,
                         fontSize = 48.sp
                     )
                 }

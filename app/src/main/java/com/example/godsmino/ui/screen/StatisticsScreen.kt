@@ -58,7 +58,7 @@ fun StatisticsScreen(
                     .padding(20.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
+            )  {
                 Text(
                     text = "HISTORIAL DE PARTIDAS",
                     style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),

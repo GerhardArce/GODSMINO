@@ -110,7 +110,7 @@ class MainActivity : ComponentActivity() {
                                         gameViewModel.finishCoinToss(winnerId)
                                     }
                                 },
-                                players = uiState.session.players
+                                session = uiState.session
                             )
                         }
                     }

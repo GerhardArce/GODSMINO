@@ -61,9 +61,21 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
                     statsRecorded = true
                     try {
                         val p1 = session.players.find { it.id == localPlayerId }
+                        val opponent = session.players.find { it.id != localPlayerId }
                         val isWin = session.currentTurnPlayerId == localPlayerId
                         val score = p1?.score ?: 0
-                        GameStatsManager.recordMatch(getApplication(), isWin, score)
+                        val opponentName = opponent?.name?.takeIf { 
+                            it.isNotBlank() && it != "Esperando Oponente..." && it != "Oponente" 
+                        } ?: if (session.roomId == "room_offline_bot") "Bot (IA)" else "Oponente Online"
+                        val rounds = session.roundNumber
+
+                        GameStatsManager.recordMatch(
+                            context = getApplication(),
+                            isWin = isWin,
+                            score = score,
+                            opponentName = opponentName,
+                            rounds = rounds
+                        )
                     } catch (_: Exception) {}
                 } else if (session.status != GameStatus.FINISHED) {
                     statsRecorded = false

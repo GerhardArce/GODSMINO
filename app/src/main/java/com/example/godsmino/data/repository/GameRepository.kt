@@ -12,6 +12,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlin.random.Random
+import kotlin.math.abs
 
 class GameRepository(
     private val roomId: String = "room_godsmino_1", 
@@ -157,9 +158,16 @@ class GameRepository(
         if (current.players.size < 2 && current.roomId != "room_offline_bot") {
             return Pair(false, "Se necesita al menos 1 oponente para iniciar.")
         }
+        val winnerIndex = Random.nextInt(current.players.size)
+        val winner = current.players.getOrNull(winnerIndex) ?: current.players.first()
         val newSession = current.copy(
             status = GameStatus.COIN_TOSS,
-            activeEvent = RandomEvent("ev_coin", "Volado Divino", "Lanzando moneda al aire para elegir quién inicia...", "INFO")
+            activeEvent = RandomEvent(
+                id = "ev_coin_${winner.id}",
+                title = "Volado Divino",
+                description = "Lanzando moneda al aire para elegir quién inicia...",
+                effectType = winner.id
+            )
         )
         _session.value = newSession
         firebaseDataSource.syncGameSession(roomId, newSession)
@@ -443,7 +451,7 @@ class GameRepository(
             activeEvent = RandomEvent("ev_swap", "Intercambio Mistico", "${player.name} intercambio su ficha [${myMatching.left}|${myMatching.right}] por una ficha secreta del rival.", "POWER")
         )
         _session.value = newSession
-        firebaseDataSource.syncGameSession(roomId, newSession)
+        firebaseDataSource.syncGameSession(newSession.roomId, newSession)
         return Pair(true, null)
     }
 
