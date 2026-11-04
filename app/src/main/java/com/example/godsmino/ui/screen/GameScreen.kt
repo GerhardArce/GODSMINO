@@ -34,6 +34,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.godsmino.data.model.BoardDirection
 import com.example.godsmino.data.model.GameStatus
 import com.example.godsmino.data.model.Player
+import com.example.godsmino.data.model.PowerType
 import com.example.godsmino.ui.components.*
 import com.example.godsmino.ui.viewmodel.GameViewModel
 // import androidx.compose.ui.zIndex.zIndex
@@ -57,8 +58,10 @@ fun GameScreen(
     val opponent = session.players.firstOrNull { it.id != localPlayerId } ?: session.players.getOrNull(1)
     val isMyTurn = session.currentTurnPlayerId == localPlayerId
 
-    LaunchedEffect(roomId) {
-        viewModel.startRoom(roomId, isHost)
+    LaunchedEffect(roomId, isHost) {
+        if (session.roomId != roomId) {
+            viewModel.startRoom(roomId, isHost)
+        }
     }
 
     LaunchedEffect(session.status) {
@@ -278,7 +281,8 @@ fun GameScreen(
                         horizontalArrangement = Arrangement.SpaceEvenly,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        player1.powerCounts.forEach { (power, count) ->
+                        player1.powerCounts.forEach { (powerStr, count) ->
+                            val power = try { PowerType.valueOf(powerStr) } catch (_: Exception) { PowerType.WILDCARD }
                             val isSelected = uiState.selectedPower == power
                             val color = if (count > 0) (if (isSelected) Color(0xFF4CAF50) else Color(0xFFD4AF37)) else Color.DarkGray
                             IconButton(

@@ -1,5 +1,6 @@
 package com.example.godsmino
 
+import com.example.godsmino.data.model.GameStatus
 import com.example.godsmino.data.model.PowerType
 import com.example.godsmino.ui.viewmodel.GameViewModel
 import kotlinx.coroutines.Dispatchers
@@ -25,10 +26,42 @@ class GameViewModelTest {
         Dispatchers.resetMain()
     }
 
+    private fun createActiveGameViewModel(): GameViewModel {
+        val viewModel = GameViewModel()
+        viewModel.startRoom("room_offline_bot", true)
+        testDispatcher.scheduler.advanceUntilIdle()
+        return viewModel
+    }
+
+    @Test
+    fun testWaitingRoomAndStartGame() = runTest {
+        val viewModel = GameViewModel()
+        viewModel.startRoom("room_test_123", true, "HostPlayer")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        var state = viewModel.uiState.value
+        assertEquals(GameStatus.WAITING, state.session.status)
+        assertEquals(1, state.session.players.size)
+
+        // Guest joins
+        viewModel.joinOnlineRoom("GuestPlayer")
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        state = viewModel.uiState.value
+        assertEquals(2, state.session.players.size)
+
+        // Host starts game
+        viewModel.startGameSession()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        state = viewModel.uiState.value
+        assertEquals(GameStatus.PLAYING, state.session.status)
+        assertEquals(7, state.session.players[0].tiles.size)
+    }
+
     @Test
     fun testViewModelInitialization() = runTest {
-        val viewModel = GameViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = createActiveGameViewModel()
         val state = viewModel.uiState.value
 
         assertNotNull(state.session)
@@ -39,8 +72,7 @@ class GameViewModelTest {
 
     @Test
     fun testTileSelection() = runTest {
-        val viewModel = GameViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = createActiveGameViewModel()
         val firstTile = viewModel.uiState.value.session.players[0].tiles[0]
 
         viewModel.selectTile(firstTile)
@@ -52,8 +84,7 @@ class GameViewModelTest {
 
     @Test
     fun testToggleBoardTheme() = runTest {
-        val viewModel = GameViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = createActiveGameViewModel()
         val initialTheme = viewModel.uiState.value.boardThemeIndex
 
         viewModel.toggleBoardTheme()
@@ -62,8 +93,7 @@ class GameViewModelTest {
 
     @Test
     fun testRequestPowerDialog() = runTest {
-        val viewModel = GameViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = createActiveGameViewModel()
 
         viewModel.requestUsePower(PowerType.WILDCARD)
         assertEquals(PowerType.WILDCARD, viewModel.uiState.value.pendingPowerDialog)
@@ -74,33 +104,29 @@ class GameViewModelTest {
 
     @Test
     fun testDrawTile() = runTest {
-        val viewModel = GameViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
-        val initialTilesCount = viewModel.uiState.value.session.players[0].tiles.size
+        val viewModel = createActiveGameViewModel()
 
+        // Drawing when player has valid moves should result in an error per domino rules
         viewModel.drawTile()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        val newTilesCount = viewModel.uiState.value.session.players[0].tiles.size
-        assertEquals(initialTilesCount + 1, newTilesCount)
+        assertNotNull(viewModel.uiState.value.errorMessage)
     }
 
     @Test
     fun testForfeitGame() = runTest {
-        val viewModel = GameViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = createActiveGameViewModel()
 
         viewModel.forfeitGame()
         testDispatcher.scheduler.advanceUntilIdle()
 
         val status = viewModel.uiState.value.session.status
-        assertEquals(com.example.godsmino.data.model.GameStatus.FINISHED, status)
+        assertEquals(GameStatus.FINISHED, status)
     }
 
     @Test
     fun testRestartGame() = runTest {
-        val viewModel = GameViewModel()
-        testDispatcher.scheduler.advanceUntilIdle()
+        val viewModel = createActiveGameViewModel()
 
         viewModel.forfeitGame()
         testDispatcher.scheduler.advanceUntilIdle()
@@ -109,6 +135,6 @@ class GameViewModelTest {
         testDispatcher.scheduler.advanceUntilIdle()
 
         val status = viewModel.uiState.value.session.status
-        assertEquals(com.example.godsmino.data.model.GameStatus.PLAYING, status)
+        assertEquals(GameStatus.PLAYING, status)
     }
 }

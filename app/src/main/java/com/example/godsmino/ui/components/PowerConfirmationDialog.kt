@@ -1,6 +1,5 @@
 package com.example.godsmino.ui.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -87,8 +86,7 @@ fun PowerConfirmationDialog(
                             ) {
                                 DominoTileView(
                                     tile = tile,
-                                    isSelected = isSelected,
-                                    isDraggable = false
+                                    isSelected = isSelected
                                 )
                             }
                         }

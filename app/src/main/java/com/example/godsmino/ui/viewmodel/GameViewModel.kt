@@ -32,19 +32,24 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
         observeRepository()
     }
 
-    fun startRoom(roomId: String, isHost: Boolean) {
+    fun startRoom(roomId: String, isHost: Boolean, playerName: String = "Jugador") {
         repository.cleanup()
         localPlayerId = if (isHost) "p1" else "p2"
         repository = GameRepository(roomId, isHost)
         statsRecorded = false
-        observeRepository()
+        observeRepository(playerName)
     }
 
-    private fun observeRepository() {
+    private fun observeRepository(playerName: String = "Jugador") {
         observeJob?.cancel()
         observeJob = viewModelScope.launch {
             repository.session.collect { session ->
                 _uiState.update { it.copy(session = session) }
+
+                if (localPlayerId == "p2" && session.status == GameStatus.WAITING && session.players.none { it.id == "p2" }) {
+                    repository.joinOnlineRoom(playerName)
+                }
+
                 if (session.status == GameStatus.FINISHED && !statsRecorded) {
                     statsRecorded = true
                     try {
@@ -58,6 +63,24 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
                 }
                 checkBotTurn(session.currentTurnPlayerId, session.status, session.roomId)
             }
+        }
+    }
+
+    fun joinOnlineRoom(playerName: String) {
+        val (success, error) = repository.joinOnlineRoom(playerName)
+        if (!success) {
+            _uiState.update { it.copy(errorMessage = error) }
+        } else {
+            _uiState.update { it.copy(errorMessage = null) }
+        }
+    }
+
+    fun startGameSession() {
+        val (success, error) = repository.startGameSession()
+        if (!success) {
+            _uiState.update { it.copy(errorMessage = error) }
+        } else {
+            _uiState.update { it.copy(errorMessage = null) }
         }
     }
 
@@ -112,7 +135,7 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
             return
         }
         val player = _uiState.value.session.players.find { it.id == currentUserId } ?: return
-        if ((player.powerCounts[powerType] ?: 0) <= 0) {
+        if ((player.powerCounts[powerType.name] ?: 0) <= 0) {
             _uiState.update { it.copy(errorMessage = "No te quedan cargas de este poder.") }
             return
         }
