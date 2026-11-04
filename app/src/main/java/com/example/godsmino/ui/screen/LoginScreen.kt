@@ -1,8 +1,10 @@
 package com.example.godsmino.ui.screen
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -15,18 +17,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.godsmino.data.repository.AuthRepository
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
     authRepository: AuthRepository,
-    onLoginSuccess: () -> Unit
+    onLoginSuccess: () -> Unit,
+    onGoogleSignInClicked: () -> Unit = {},
+    onGuestLogin: () -> Unit = {}
 ) {
     var isRegisterMode by remember { mutableStateOf(false) }
     var emailInput by remember { mutableStateOf("") }
@@ -107,25 +111,30 @@ fun LoginScreen(
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            text = "Registro",
+                            text = "Registrarse",
                             color = if (isRegisterMode) Color.Black else Color.LightGray,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 }
 
-                // Error Banner
+                // Error message banner
                 AnimatedVisibility(visible = errorMessage != null) {
-                    Text(
-                        text = errorMessage ?: "",
-                        color = Color(0xFFFF5252),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    if (errorMessage != null) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color(0xFFB71C1C), RoundedCornerShape(8.dp))
+                                .padding(8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = errorMessage ?: "", color = Color.White, fontSize = 12.sp)
+                        }
+                    }
                 }
 
-                // Name field (if register mode)
-                if (isRegisterMode) {
+                // Name field if register mode
+                AnimatedVisibility(visible = isRegisterMode) {
                     OutlinedTextField(
                         value = nameInput,
                         onValueChange = { nameInput = it },
@@ -177,6 +186,8 @@ fun LoginScreen(
                     )
                 )
 
+                val coroutineScope = rememberCoroutineScope()
+
                 // Main Action Button (Submit)
                 Button(
                     onClick = {
@@ -184,16 +195,18 @@ fun LoginScreen(
                         val cleanPass = passwordInput.trim()
                         val cleanName = nameInput.trim()
 
-                        val (success, error) = if (isRegisterMode) {
-                            authRepository.register(cleanEmail, cleanPass, cleanName)
-                        } else {
-                            authRepository.login(cleanEmail, cleanPass)
-                        }
+                        coroutineScope.launch {
+                            val (success, error) = if (isRegisterMode) {
+                                authRepository.register(cleanEmail, cleanPass, cleanName)
+                            } else {
+                                authRepository.login(cleanEmail, cleanPass)
+                            }
 
-                        if (success) {
-                            onLoginSuccess()
-                        } else {
-                            errorMessage = error
+                            if (success) {
+                                onLoginSuccess()
+                            } else {
+                                errorMessage = error
+                            }
                         }
                     },
                     modifier = Modifier
@@ -208,6 +221,49 @@ fun LoginScreen(
                         fontWeight = FontWeight.Bold,
                         color = Color.Black
                     )
+                }
+
+                // Google Sign In Button
+                OutlinedButton(
+                    onClick = onGoogleSignInClicked,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    border = BorderStroke(1.dp, Color(0xFFD4AF37))
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .background(Color.White, CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "G",
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF4285F4),
+                                fontSize = 16.sp
+                            )
+                        }
+                        Text(text = "Iniciar sesión con Google", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                OutlinedButton(
+                    onClick = onGuestLogin,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(50.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color.White),
+                    border = BorderStroke(1.dp, Color.Gray)
+                ) {
+                    Text(text = "Entrar como Invitado (Acceso Rapido)", fontSize = 13.sp, fontWeight = FontWeight.Medium)
                 }
             }
         }

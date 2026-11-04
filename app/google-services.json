@@ -12,7 +12,20 @@
           "package_name": "com.example.godsmino"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "566064644349-sogmcne0hm27v6dvntvhm0d3uic6nfq2.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.godsmino",
+            "certificate_hash": "167f84baddf57c119b663e68b1ffabdb99d47063"
+          }
+        },
+        {
+          "client_id": "566064644349-5qa03v6bq11sntn5eg2e9e3fenv27p6f.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyCI05M8cWYvTgFOMppzXFxKtJVNI4nAyeo"
@@ -20,7 +33,12 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "566064644349-5qa03v6bq11sntn5eg2e9e3fenv27p6f.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
         }
       }
     }

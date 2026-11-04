@@ -2,6 +2,7 @@ package com.example.godsmino.data.model
 
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FastForward
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SwapHoriz
@@ -36,5 +37,11 @@ enum class PowerType(
         "Invierte el orden de los turnos para desconcertar al rival.",
         1,
         Icons.Default.Refresh
+    ),
+    FORCE_DRAW_THREE(
+        "Furia del Pozo",
+        "Fuerza al oponente a robar 3 fichas del pozo de inmediato.",
+        1,
+        Icons.Default.Layers
     )
 }

@@ -32,26 +32,50 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
         observeRepository()
     }
 
-    fun startRoom(roomId: String, isHost: Boolean) {
+    fun startRoom(roomId: String, isHost: Boolean, playerName: String = "Jugador") {
         repository.cleanup()
         localPlayerId = if (isHost) "p1" else "p2"
-        repository = GameRepository(roomId, isHost)
+        repository = GameRepository(roomId, isHost, hostName = playerName)
         statsRecorded = false
-        observeRepository()
+        _uiState.update { GameUiState(session = repository.session.value) }
+        observeRepository(playerName)
     }
 
-    private fun observeRepository() {
+    private fun observeRepository(playerName: String = "Jugador") {
         observeJob?.cancel()
         observeJob = viewModelScope.launch {
             repository.session.collect { session ->
-                _uiState.update { it.copy(session = session) }
+                _uiState.update { current ->
+                    if (current.session.status == GameStatus.PLAYING && session.status == GameStatus.WAITING) {
+                        current
+                    } else {
+                        current.copy(session = session)
+                    }
+                }
+
+                if (localPlayerId == "p2" && session.status == GameStatus.WAITING && session.players.none { it.id == "p2" }) {
+                    repository.joinOnlineRoom(playerName)
+                }
+
                 if (session.status == GameStatus.FINISHED && !statsRecorded) {
                     statsRecorded = true
                     try {
                         val p1 = session.players.find { it.id == localPlayerId }
+                        val opponent = session.players.find { it.id != localPlayerId }
                         val isWin = session.currentTurnPlayerId == localPlayerId
                         val score = p1?.score ?: 0
-                        GameStatsManager.recordMatch(getApplication(), isWin, score)
+                        val opponentName = opponent?.name?.takeIf { 
+                            it.isNotBlank() && it != "Esperando Oponente..." && it != "Oponente" 
+                        } ?: if (session.roomId == "room_offline_bot") "Bot (IA)" else "Oponente Online"
+                        val rounds = session.roundNumber
+
+                        GameStatsManager.recordMatch(
+                            context = getApplication(),
+                            isWin = isWin,
+                            score = score,
+                            opponentName = opponentName,
+                            rounds = rounds
+                        )
                     } catch (_: Exception) {}
                 } else if (session.status != GameStatus.FINISHED) {
                     statsRecorded = false
@@ -59,6 +83,39 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
                 checkBotTurn(session.currentTurnPlayerId, session.status, session.roomId)
             }
         }
+    }
+
+    fun joinOnlineRoom(playerName: String) {
+        viewModelScope.launch {
+            val (success, error) = repository.joinOnlineRoom(playerName)
+            if (!success) {
+                _uiState.update { it.copy(errorMessage = error) }
+            } else {
+                _uiState.update { it.copy(session = repository.session.value, errorMessage = null) }
+            }
+        }
+    }
+
+    fun startCoinToss() {
+        val (success, error) = repository.startCoinToss()
+        if (!success) {
+            _uiState.update { it.copy(errorMessage = error) }
+        } else {
+            _uiState.update { it.copy(session = repository.session.value, errorMessage = null) }
+        }
+    }
+
+    fun finishCoinToss(winnerPlayerId: String) {
+        val (success, error) = repository.finishCoinToss(winnerPlayerId)
+        if (!success) {
+            _uiState.update { it.copy(errorMessage = error) }
+        } else {
+            _uiState.update { it.copy(session = repository.session.value, errorMessage = null) }
+        }
+    }
+
+    fun startGameSession() {
+        startCoinToss()
     }
 
     private fun checkBotTurn(currentTurnPlayerId: String, status: GameStatus, roomId: String) {
@@ -112,7 +169,7 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
             return
         }
         val player = _uiState.value.session.players.find { it.id == currentUserId } ?: return
-        if ((player.powerCounts[powerType] ?: 0) <= 0) {
+        if ((player.powerCounts[powerType.name] ?: 0) <= 0) {
             _uiState.update { it.copy(errorMessage = "No te quedan cargas de este poder.") }
             return
         }
@@ -216,11 +273,12 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
 
     fun restartGame() {
         repository.restartGame()
-        _uiState.update { GameUiState() }
+        _uiState.update { GameUiState(session = repository.session.value) }
     }
 
     fun forfeitGame() {
         repository.forfeitGame(localPlayerId)
+        _uiState.update { GameUiState(session = repository.session.value) }
     }
 
     override fun onCleared() {
