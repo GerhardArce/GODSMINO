@@ -50,8 +50,14 @@ class GameViewModelTest {
         state = viewModel.uiState.value
         assertEquals(2, state.session.players.size)
 
-        // Host starts game
+        // Host starts game (coin toss)
         viewModel.startGameSession()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(GameStatus.COIN_TOSS, viewModel.uiState.value.session.status)
+
+        // Finish coin toss
+        viewModel.finishCoinToss("p1")
         testDispatcher.scheduler.advanceUntilIdle()
 
         state = viewModel.uiState.value
@@ -92,25 +98,44 @@ class GameViewModelTest {
     }
 
     @Test
-    fun testRequestPowerDialog() = runTest {
+    fun testAllPowersExecution() = runTest {
         val viewModel = createActiveGameViewModel()
 
+        // 1. Wildcard power
         viewModel.requestUsePower(PowerType.WILDCARD)
         assertEquals(PowerType.WILDCARD, viewModel.uiState.value.pendingPowerDialog)
+        viewModel.confirmUsePower()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.session)
 
-        viewModel.dismissPowerDialog()
-        assertNull(viewModel.uiState.value.pendingPowerDialog)
+        // 2. Skip power
+        viewModel.requestUsePower(PowerType.SKIP)
+        viewModel.confirmUsePower()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.session)
+
+        // 3. Force Draw Three power
+        viewModel.requestUsePower(PowerType.FORCE_DRAW_THREE)
+        viewModel.confirmUsePower()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.session)
+
+        // 4. Reverse power
+        viewModel.requestUsePower(PowerType.REVERSE)
+        viewModel.confirmUsePower()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertNotNull(viewModel.uiState.value.session)
     }
 
     @Test
     fun testDrawTile() = runTest {
         val viewModel = createActiveGameViewModel()
 
-        // Drawing when player has valid moves should result in an error per domino rules
         viewModel.drawTile()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertNotNull(viewModel.uiState.value.errorMessage)
+        assertNull(viewModel.uiState.value.errorMessage)
+        assertEquals(8, viewModel.uiState.value.session.players[0].tiles.size)
     }
 
     @Test

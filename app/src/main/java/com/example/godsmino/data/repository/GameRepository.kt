@@ -3,6 +3,7 @@ package com.example.godsmino.data.repository
 import com.example.godsmino.data.datasource.FirebaseGameDataSource
 import com.example.godsmino.data.model.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.CoroutineScope
@@ -15,7 +16,8 @@ import kotlin.random.Random
 class GameRepository(
     private val roomId: String = "room_godsmino_1", 
     private val isHost: Boolean = true,
-    ioDispatcher: CoroutineDispatcher = Dispatchers.IO
+    hostName: String = "",
+    ioDispatcher: CoroutineDispatcher = Dispatchers.Main.immediate
 ) {
     private val firebaseDataSource = FirebaseGameDataSource()
     private val scope = CoroutineScope(ioDispatcher)
@@ -23,26 +25,40 @@ class GameRepository(
         if (isHost) {
             createInitialSession(
                 roomId,
-                "Jugador 1 (Tu)",
-                if (roomId == "room_offline_bot") "Bot (IA)" else "Oponente"
+                hostName.ifBlank { "Jugador 1" },
+                if (roomId == "room_offline_bot") "Bot (IA)" else "Esperando Oponente..."
             )
         } else {
-            GameSession(roomId = roomId)
+            GameSession(roomId = roomId, status = GameStatus.WAITING, activeEvent = RandomEvent("ev_wait", "Buscando Sala", "Conectando a la sala [$roomId]...", "INFO"))
         }
     )
-    val session: Flow<GameSession> = _session.asStateFlow()
+    val session: StateFlow<GameSession> = _session.asStateFlow()
 
     init {
         scope.launch {
             try {
-                val remoteSession = firebaseDataSource.getExistingSession(roomId)
-                if (remoteSession != null) {
-                    _session.value = remoteSession
+                if (!isHost) {
+                    val remoteSession = firebaseDataSource.getExistingSession(roomId)
+                    if (remoteSession != null && remoteSession.players.isNotEmpty()) {
+                        _session.value = remoteSession
+                    } else {
+                        _session.value = GameSession(
+                            roomId = roomId,
+                            status = GameStatus.WAITING,
+                            activeEvent = RandomEvent("ev_err", "Sala No Encontrada", "La sala [$roomId] no existe o el anfitrión no está conectado.", "ERROR")
+                        )
+                    }
                 }
 
                 firebaseDataSource.observeGameSession(roomId).collect { updatedSession ->
                     if (updatedSession != null) {
-                        _session.value = updatedSession
+                        val currentStatus = _session.value.status
+                        if (currentStatus == GameStatus.PLAYING && updatedSession.status == GameStatus.WAITING) {
+                            return@collect
+                        }
+                        if (updatedSession != _session.value) {
+                            _session.value = updatedSession
+                        }
                     }
                 }
             } catch (_: Exception) {}
@@ -61,73 +77,6 @@ class GameRepository(
         p2Score: Int = 0, 
         nextRound: Int = 1
     ): GameSession {
-        if (roomId == "room_offline_bot") {
-            val allTiles = mutableListOf<Tile>()
-            for (i in 0..6) {
-                for (j in i..6) {
-                    allTiles.add(Tile(left = i, right = j))
-                }
-            }
-            allTiles.shuffle()
-
-            val p1Tiles = allTiles.subList(0, 7).toList()
-            val p2Tiles = allTiles.subList(7, 14).toList()
-            val remainingBoneyard = allTiles.subList(14, 28).toList()
-
-            val p1 = Player(id = "p1", name = p1Name, tiles = p1Tiles, score = p1Score)
-            val p2 = Player(id = "p2", name = p2Name, tiles = p2Tiles, score = p2Score)
-
-            val initialSession = GameSession(
-                roomId = roomId,
-                board = emptyList(),
-                players = listOf(p1, p2),
-                currentTurnPlayerId = p1.id,
-                boneyard = remainingBoneyard,
-                status = GameStatus.PLAYING,
-                activeEvent = RandomEvent("ev_init", "Partida Local vs Bot", "Practica tus estrategias contra la IA.", "INFO"),
-                roundNumber = nextRound
-            )
-
-            firebaseDataSource.syncGameSession(roomId, initialSession)
-            return initialSession
-        } else {
-            val p1 = Player(id = "p1", name = p1Name, score = p1Score)
-            val initialSession = GameSession(
-                roomId = roomId,
-                board = emptyList(),
-                players = listOf(p1),
-                currentTurnPlayerId = p1.id,
-                boneyard = emptyList(),
-                status = GameStatus.WAITING,
-                activeEvent = RandomEvent("ev_wait", "Sala de Espera", "Sala [$roomId] creada. Esperando oponente...", "INFO"),
-                roundNumber = nextRound
-            )
-
-            firebaseDataSource.syncGameSession(roomId, initialSession)
-            return initialSession
-        }
-    }
-
-    fun joinOnlineRoom(p2Name: String): Pair<Boolean, String?> {
-        val current = _session.value
-        if (current.players.any { it.id == "p2" }) {
-            return Pair(true, null)
-        }
-        val p2 = Player(id = "p2", name = p2Name)
-        val updatedSession = current.copy(
-            players = current.players + p2,
-            activeEvent = RandomEvent("ev_join", "Oponente Conectado", "$p2Name se ha unido a la sala.", "INFO")
-        )
-        _session.value = updatedSession
-        firebaseDataSource.syncGameSession(roomId, updatedSession)
-        return Pair(true, null)
-    }
-
-    fun startGameSession(): Pair<Boolean, String?> {
-        val current = _session.value
-        if (current.players.size < 2) {
-            return Pair(false, "Se requieren 2 jugadores para iniciar la partida.")
-        }
         val allTiles = mutableListOf<Tile>()
         for (i in 0..6) {
             for (j in i..6) {
@@ -136,25 +85,102 @@ class GameRepository(
         }
         allTiles.shuffle()
 
+        val isBotGame = roomId == "room_offline_bot"
+
         val p1Tiles = allTiles.subList(0, 7).toList()
         val p2Tiles = allTiles.subList(7, 14).toList()
-        val remainingBoneyard = allTiles.subList(14, 28).toList()
+        val remainingBoneyard = if (isBotGame) allTiles.subList(14, 28).toList() else allTiles.subList(7, 28).toList()
 
-        val p1 = current.players[0].copy(tiles = p1Tiles)
-        val p2 = current.players[1].copy(tiles = p2Tiles)
+        val cleanP1Name = p1Name.ifBlank { "Jugador 1" }
+        val cleanP2Name = p2Name.ifBlank { if (isBotGame) "Bot (IA)" else "Esperando Oponente..." }
 
-        val updatedSession = current.copy(
+        val p1 = Player(id = "p1", name = cleanP1Name, tiles = p1Tiles, score = p1Score)
+        val p2 = Player(id = "p2", name = cleanP2Name, tiles = p2Tiles, score = p2Score)
+
+        val initialSession = GameSession(
+            roomId = roomId,
             board = emptyList(),
-            players = listOf(p1, p2),
+            players = if (isBotGame) listOf(p1, p2) else listOf(p1),
             currentTurnPlayerId = p1.id,
             boneyard = remainingBoneyard,
-            status = GameStatus.PLAYING,
-            activeEvent = RandomEvent("ev_start", "Inicio de Partida", "¡Ambos jugadores listos! La partida ha comenzado.", "INFO")
+            status = if (isBotGame) GameStatus.PLAYING else GameStatus.WAITING,
+            activeEvent = RandomEvent("ev_init", "Inicio de Partida", if (isBotGame) "Partida vs Bot iniciada." else "Esperando oponente en sala [$roomId].", "INFO"),
+            roundNumber = nextRound
         )
 
-        _session.value = updatedSession
-        firebaseDataSource.syncGameSession(roomId, updatedSession)
+        firebaseDataSource.syncGameSession(roomId, initialSession)
+        return initialSession
+    }
+
+    suspend fun joinOnlineRoom(playerName: String): Pair<Boolean, String?> {
+        val remoteSession = firebaseDataSource.getExistingSession(roomId)
+        val current = remoteSession ?: _session.value
+        
+        val existingP1 = current.players.find { it.id == "p1" }
+        if (existingP1 == null || current.players.isEmpty() || current.activeEvent?.effectType == "ERROR") {
+            return Pair(false, "La sala [$roomId] no existe o el anfitrión no está conectado.")
+        }
+
+        val cleanP2Name = playerName.ifBlank { "Jugador 2" }
+        val existingP2 = current.players.find { it.id == "p2" }
+
+        val p2Tiles = if (existingP2 != null && existingP2.tiles.isNotEmpty()) {
+            existingP2.tiles
+        } else if (current.boneyard.size >= 7) {
+            current.boneyard.take(7)
+        } else {
+            emptyList()
+        }
+
+        val newBoneyard = if (existingP2 == null && current.boneyard.size >= 7) {
+            current.boneyard.drop(7)
+        } else {
+            current.boneyard
+        }
+
+        val p2 = existingP2?.copy(name = cleanP2Name) ?: Player(id = "p2", name = cleanP2Name, tiles = p2Tiles, score = 0)
+
+        // Strictly preserve existingP1 (Host) name and tiles
+        val updatedPlayers = listOf(existingP1, p2)
+        val newSession = current.copy(
+            players = updatedPlayers,
+            boneyard = newBoneyard,
+            activeEvent = RandomEvent("ev_join", "Jugador Conectado", "$cleanP2Name se ha unido a la sala.", "INFO")
+        )
+        _session.value = newSession
+        firebaseDataSource.syncGameSession(roomId, newSession)
         return Pair(true, null)
+    }
+
+    fun startCoinToss(): Pair<Boolean, String?> {
+        val current = _session.value
+        if (current.players.size < 2 && current.roomId != "room_offline_bot") {
+            return Pair(false, "Se necesita al menos 1 oponente para iniciar.")
+        }
+        val newSession = current.copy(
+            status = GameStatus.COIN_TOSS,
+            activeEvent = RandomEvent("ev_coin", "Volado Divino", "Lanzando moneda al aire para elegir quién inicia...", "INFO")
+        )
+        _session.value = newSession
+        firebaseDataSource.syncGameSession(roomId, newSession)
+        return Pair(true, null)
+    }
+
+    fun finishCoinToss(winnerPlayerId: String): Pair<Boolean, String?> {
+        val current = _session.value
+        val winner = current.players.find { it.id == winnerPlayerId } ?: current.players.first()
+        val newSession = current.copy(
+            status = GameStatus.PLAYING,
+            currentTurnPlayerId = winner.id,
+            activeEvent = RandomEvent("ev_start", "¡Partida Iniciada!", "¡${winner.name} ganó el volado e inicia la partida!", "INFO")
+        )
+        _session.value = newSession
+        firebaseDataSource.syncGameSession(roomId, newSession)
+        return Pair(true, null)
+    }
+
+    fun startGameSession(): Pair<Boolean, String?> {
+        return startCoinToss()
     }
 
     fun makeMove(playerId: String, tile: Tile, direction: BoardDirection, useWildcard: Boolean = false): Pair<Boolean, String?> {
@@ -185,9 +211,8 @@ class GameRepository(
             val canConnectRight = rightEnd != null && (tileToCheck.left == rightEnd || tileToCheck.right == rightEnd)
 
             val isValid = when (direction) {
-                BoardDirection.LEFT -> canConnectLeft
-                BoardDirection.RIGHT -> canConnectRight
-                else -> false // UP y DOWN deprecados
+                BoardDirection.LEFT, BoardDirection.UP -> canConnectLeft
+                BoardDirection.RIGHT, BoardDirection.DOWN -> canConnectRight
             }
             if (!isValid) {
                 return Pair(false, "Jugada invalida: La ficha no coincide con los extremos del tablero.")
@@ -223,9 +248,9 @@ class GameRepository(
 
         val updatedTiles = if (useWildcard) {
             val target = player.tiles.firstOrNull { (it.left == tile.left && it.right == tile.right) || (it.left == tile.right && it.right == tile.left) }
-            if (target != null) player.tiles.filterNot { it.id == target.id } else return Pair(false, "Ficha objetivo no encontrada en la mano.")
+            if (target != null) player.tiles.filterNot { it.id == target.id } else player.tiles
         } else {
-            if (matchingTile != null) player.tiles.filterNot { it.id == matchingTile.id } else return Pair(false, "No posees esta ficha.")
+            if (matchingTile != null) player.tiles.filterNot { it.id == matchingTile.id } else player.tiles
         }
 
         val isFinished = updatedTiles.isEmpty()
@@ -239,11 +264,7 @@ class GameRepository(
         val finalStatus = if (isFinished) GameStatus.FINISHED else current.status
 
         if (isFinished) {
-            val opponentTilesSum = updatedPlayers.filter { it.id != playerId }.sumOf { p -> 
-                p.tiles.sumOf { t -> 
-                    if (current.activeEvent?.id == "ev_loca" && t.isDouble()) t.sumPoints() * 2 else t.sumPoints() 
-                } 
-            }
+            val opponentTilesSum = updatedPlayers.filter { it.id != playerId }.sumOf { p -> p.tiles.sumOf { it.sumPoints() } }
             finalPlayers = updatedPlayers.map { p ->
                 if (p.id == playerId) p.copy(score = p.score + opponentTilesSum + 50) else p
             }
@@ -253,33 +274,16 @@ class GameRepository(
             generateRandomEvent()
         } else current.activeEvent
 
-        var finalNextTurnId = nextTurnId
-        if (possibleEvent?.id == "ev_bonus" && possibleEvent != current.activeEvent) {
-            finalPlayers = finalPlayers.map { p ->
-                if (p.id == playerId) p.copy(score = p.score + 20) else p
-            }
-        } else if (possibleEvent?.id == "ev_inv" && possibleEvent != current.activeEvent) {
-            finalNextTurnId = playerId
-        }
-        
-        val finalBoneyard = if (possibleEvent?.id == "ev_pozo" && possibleEvent != current.activeEvent) {
-            current.boneyard.shuffled()
-        } else {
-            current.boneyard
-        }
-
         val newSession = current.copy(
             board = newBoard,
             players = finalPlayers,
-            boneyard = finalBoneyard,
-            currentTurnPlayerId = if (isFinished) playerId else finalNextTurnId,
+            currentTurnPlayerId = if (isFinished) playerId else nextTurnId,
             status = finalStatus,
             activeEvent = possibleEvent
         )
 
-        val evaluatedSession = evaluateTranca(newSession)
-        _session.value = evaluatedSession
-        firebaseDataSource.syncGameSession(evaluatedSession.roomId, evaluatedSession)
+        _session.value = newSession
+        firebaseDataSource.syncGameSession(newSession.roomId, newSession)
         return Pair(true, null)
     }
 
@@ -301,14 +305,6 @@ class GameRepository(
 
         val player = current.players.find { it.id == playerId } ?: return Pair(false, "Jugador no encontrado.")
         
-        val leftEnd = current.getLeftEnd()
-        val rightEnd = current.getRightEnd()
-        val canPlay = current.board.isEmpty() || player.tiles.any { t -> 
-            (leftEnd != null && (t.left == leftEnd || t.right == leftEnd)) || 
-            (rightEnd != null && (t.left == rightEnd || t.right == rightEnd)) 
-        }
-        if (canPlay) return Pair(false, "Tienes fichas jugables, no puedes robar del pozo.")
-        
         val drawnTile = current.boneyard.first()
         val newBoneyard = current.boneyard.drop(1)
 
@@ -320,33 +316,24 @@ class GameRepository(
             boneyard = newBoneyard,
             activeEvent = RandomEvent("ev_draw", "Robo en el Pozo", "${player.name} ha robado una ficha del pozo.", "INFO")
         )
-        val evaluatedSession = evaluateTranca(newSession)
-        _session.value = evaluatedSession
-        firebaseDataSource.syncGameSession(evaluatedSession.roomId, evaluatedSession)
+        _session.value = newSession
+        firebaseDataSource.syncGameSession(newSession.roomId, newSession)
         return Pair(true, null)
     }
 
     fun passTurn(playerId: String): Pair<Boolean, String?> {
         val current = _session.value
         if (current.currentTurnPlayerId != playerId) return Pair(false, "No es tu turno.")
-        if (current.boneyard.isNotEmpty()) return Pair(false, "Aun hay fichas en el pozo.")
-        
+        if (current.status != GameStatus.PLAYING) return Pair(false, "Partida inactiva.")
+
         val player = current.players.find { it.id == playerId } ?: return Pair(false, "Jugador no encontrado.")
-        val leftEnd = current.getLeftEnd()
-        val rightEnd = current.getRightEnd()
-        
-        val canPlay = current.board.isEmpty() || player.tiles.any { t -> 
-            (leftEnd != null && (t.left == leftEnd || t.right == leftEnd)) || 
-            (rightEnd != null && (t.left == rightEnd || t.right == rightEnd)) 
-        }
-        
-        if (canPlay) return Pair(false, "Tienes fichas jugables, no puedes pasar el turno.")
-        
-        val nextTurnId = current.players.first { it.id != playerId }.id
+        val nextTurnId = current.players.firstOrNull { it.id != playerId }?.id ?: playerId
+
         val newSession = current.copy(
             currentTurnPlayerId = nextTurnId,
-            activeEvent = RandomEvent("ev_pass", "Paso de Turno", "El jugador no tiene fichas validas y el pozo esta vacio.", "INFO")
+            activeEvent = RandomEvent("ev_pass", "Paso de Turno", "${player.name} ha pasado el turno.", "INFO")
         )
+
         val evaluatedSession = evaluateTranca(newSession)
         _session.value = evaluatedSession
         firebaseDataSource.syncGameSession(evaluatedSession.roomId, evaluatedSession)
@@ -366,57 +353,55 @@ class GameRepository(
         val updatedPlayers = current.players.map { if (it.id == playerId) it.copy(powerCounts = updatedPowers) else it }
 
         var nextTurn = current.currentTurnPlayerId
-        val activeEvent: RandomEvent
+        var activeEvent = current.activeEvent
+        var updatedBoneyard = current.boneyard
+        var finalPlayers = updatedPlayers
+
+        val opponent = current.players.firstOrNull { it.id != playerId }
 
         when (powerType) {
             PowerType.SKIP -> {
                 nextTurn = playerId
-                activeEvent = RandomEvent("ev_skip", "Poder Salto", "${player.name} ha saltado el turno del rival.", "POWER")
+                activeEvent = RandomEvent("ev_skip", "Salto Celestial", "${player.name} ha saltado el turno del oponente. ¡Juegas de nuevo!", "POWER")
             }
             PowerType.REVERSE -> {
-                nextTurn = current.players.first { it.id != playerId }.id
-                activeEvent = RandomEvent("ev_rev", "Poder Inversion", "El orden de la partida ha sido invertido. Turno del oponente.", "POWER")
+                nextTurn = playerId
+                activeEvent = RandomEvent("ev_rev", "Inversión Temporal", "${player.name} ha invertido el tiempo. ¡Juegas de nuevo!", "POWER")
             }
             PowerType.WILDCARD -> {
-                activeEvent = RandomEvent("ev_wild", "Comodin Activo", "${player.name} puede colocar cualquier ficha sin restriccion.", "POWER")
-            }
-            PowerType.SWAP -> {
-                return Pair(false, "El Intercambio Mistico requiere seleccionar una ficha de tu mano.")
+                activeEvent = RandomEvent("ev_wild", "Comodín Divino", "${player.name} ha activado el Comodín Divino.", "POWER")
             }
             PowerType.FORCE_DRAW_THREE -> {
-                val opponent = current.players.first { it.id != playerId }
-                if (current.boneyard.isEmpty()) {
-                    return Pair(false, "El pozo está vacío, no se puede forzar a robar.")
+                if (opponent != null) {
+                    val drawCount = minOf(3, current.boneyard.size)
+                    val drawnTiles = current.boneyard.take(drawCount)
+                    updatedBoneyard = current.boneyard.drop(drawCount)
+                    finalPlayers = updatedPlayers.map { p ->
+                        if (p.id == opponent.id) {
+                            p.copy(tiles = p.tiles + drawnTiles)
+                        } else {
+                            p
+                        }
+                    }
+                    activeEvent = RandomEvent("ev_draw3", "Furia del Pozo", "${player.name} forzó a ${opponent.name} a robar $drawCount fichas del pozo.", "POWER")
+                } else {
+                    return Pair(false, "No hay oponente para aplicar este poder.")
                 }
-                val drawCount = minOf(3, current.boneyard.size)
-                val drawnTiles = current.boneyard.take(drawCount)
-                val newBoneyard = current.boneyard.drop(drawCount)
-
-                val updatedOpponentTiles = opponent.tiles + drawnTiles
-                val finalPlayers = updatedPlayers.map { p ->
-                    if (p.id == opponent.id) p.copy(tiles = updatedOpponentTiles) else p
-                }
-                val drawEvent = RandomEvent("ev_draw3", "Furia del Pozo", "${player.name} obligó a ${opponent.name} a robar $drawCount fichas del pozo.", "POWER")
-
-                val newSession = current.copy(
-                    players = finalPlayers,
-                    boneyard = newBoneyard,
-                    currentTurnPlayerId = nextTurn,
-                    activeEvent = drawEvent
-                )
-                _session.value = newSession
-                firebaseDataSource.syncGameSession(newSession.roomId, newSession)
-                return Pair(true, null)
             }
+            PowerType.SWAP -> {
+                // Handled via useSwapPowerWithTile
+            }
+            else -> {}
         }
 
         val newSession = current.copy(
-            players = updatedPlayers,
+            players = finalPlayers,
+            boneyard = updatedBoneyard,
             currentTurnPlayerId = nextTurn,
             activeEvent = activeEvent
         )
         _session.value = newSession
-        firebaseDataSource.syncGameSession(newSession.roomId, newSession)
+        firebaseDataSource.syncGameSession(roomId, newSession)
         return Pair(true, null)
     }
 
@@ -438,7 +423,7 @@ class GameRepository(
         val myMatching = player.tiles.find { 
             (it.left == tileToGive.left && it.right == tileToGive.right) || 
             (it.left == tileToGive.right && it.right == tileToGive.left) 
-        } ?: return Pair(false, "Ficha seleccionada no valida.")
+        } ?: player.tiles.first()
 
         val oppTileToGet = opponent.tiles.random()
 
@@ -453,16 +438,12 @@ class GameRepository(
             }
         }
 
-        val nextTurnId = current.players.first { it.id != playerId }.id
-
         val newSession = current.copy(
             players = swappedPlayers,
-            currentTurnPlayerId = nextTurnId,
             activeEvent = RandomEvent("ev_swap", "Intercambio Mistico", "${player.name} intercambio su ficha [${myMatching.left}|${myMatching.right}] por una ficha secreta del rival.", "POWER")
         )
-        val evaluatedSession = evaluateTranca(newSession)
-        _session.value = evaluatedSession
-        firebaseDataSource.syncGameSession(evaluatedSession.roomId, evaluatedSession)
+        _session.value = newSession
+        firebaseDataSource.syncGameSession(roomId, newSession)
         return Pair(true, null)
     }
 
@@ -477,8 +458,8 @@ class GameRepository(
         val p1 = session.players.getOrNull(0) ?: return session
         val p2 = session.players.getOrNull(1) ?: return session
 
-        val p1CanPlay = p1.tiles.any { t -> (leftEnd != null && (t.left == leftEnd || t.right == leftEnd)) || (rightEnd != null && (t.left == rightEnd || t.right == rightEnd)) }
-        val p2CanPlay = p2.tiles.any { t -> (leftEnd != null && (t.left == leftEnd || t.right == leftEnd)) || (rightEnd != null && (t.left == rightEnd || t.right == rightEnd)) }
+        val p1CanPlay = p1.tiles.any { t -> (leftEnd != null && (t.left == leftEnd || t.right == leftEnd)) || (rightEnd != null && (t.right == rightEnd || t.left == rightEnd)) }
+        val p2CanPlay = p2.tiles.any { t -> (leftEnd != null && (t.left == leftEnd || t.right == leftEnd)) || (rightEnd != null && (t.right == rightEnd || t.left == rightEnd)) }
 
         if (!p1CanPlay && !p2CanPlay) {
             val p1Sum = p1.tiles.sumOf { if (session.activeEvent?.id == "ev_loca" && it.isDouble()) it.sumPoints() * 2 else it.sumPoints() }
@@ -533,16 +514,11 @@ class GameRepository(
             activeEvent = RandomEvent("ev_forfeit", "Abandono de Partida", "Un jugador ha abandonado la partida.", "INFO")
         )
         _session.value = newSession
-        firebaseDataSource.syncGameSession(newSession.roomId, newSession)
+        firebaseDataSource.syncGameSession(roomId, newSession)
         return Pair(true, null)
     }
 
     fun restartGame() {
-        val current = _session.value
-        val p1Name = current.players.getOrNull(0)?.name ?: "Jugador 1 (Tu)"
-        val p2Name = current.players.getOrNull(1)?.name ?: if (roomId == "room_offline_bot") "Bot (IA)" else "Oponente"
-        val newSession = createInitialSession(roomId, p1Name, p2Name)
-        _session.value = newSession
+        _session.value = createInitialSession(roomId, "Jugador", "Bot (IA)")
     }
-
 }

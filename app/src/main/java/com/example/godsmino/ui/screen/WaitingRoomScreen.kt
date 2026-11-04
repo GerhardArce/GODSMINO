@@ -35,8 +35,8 @@ fun WaitingRoomScreen(
     val clipboardManager = LocalClipboardManager.current
     var copiedMessageVisible by remember { mutableStateOf(false) }
 
-    val p1 = session.players.find { it.id == "p1" }
-    val p2 = session.players.find { it.id == "p2" }
+    val p1 = session.players.find { it.id == "p1" } ?: session.players.firstOrNull()
+    val p2 = session.players.find { it.id == "p2" } ?: session.players.getOrNull(1)
 
     Box(
         modifier = Modifier
@@ -170,7 +170,7 @@ fun WaitingRoomScreen(
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text(
-                                    text = p1?.name ?: "Anfitrión",
+                                    text = p1?.name?.ifBlank { "Anfitrión" } ?: "Anfitrión",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White
@@ -178,7 +178,7 @@ fun WaitingRoomScreen(
                                 Text(
                                     text = "Anfitrión (P1)",
                                     fontSize = 11.sp,
-                                    color = Color.Gray
+                                    color = Color(0xFFD4AF37)
                                 )
                             }
                         }
@@ -228,7 +228,7 @@ fun WaitingRoomScreen(
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text(
-                                    text = p2?.name ?: "Esperando oponente...",
+                                    text = p2?.name?.ifBlank { "Jugador 2" } ?: "Esperando oponente...",
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (p2 != null) Color.White else Color.Gray

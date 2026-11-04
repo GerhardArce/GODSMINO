@@ -35,8 +35,9 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
     fun startRoom(roomId: String, isHost: Boolean, playerName: String = "Jugador") {
         repository.cleanup()
         localPlayerId = if (isHost) "p1" else "p2"
-        repository = GameRepository(roomId, isHost)
+        repository = GameRepository(roomId, isHost, hostName = playerName)
         statsRecorded = false
+        _uiState.update { GameUiState(session = repository.session.value) }
         observeRepository(playerName)
     }
 
@@ -44,7 +45,13 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
         observeJob?.cancel()
         observeJob = viewModelScope.launch {
             repository.session.collect { session ->
-                _uiState.update { it.copy(session = session) }
+                _uiState.update { current ->
+                    if (current.session.status == GameStatus.PLAYING && session.status == GameStatus.WAITING) {
+                        current
+                    } else {
+                        current.copy(session = session)
+                    }
+                }
 
                 if (localPlayerId == "p2" && session.status == GameStatus.WAITING && session.players.none { it.id == "p2" }) {
                     repository.joinOnlineRoom(playerName)
@@ -67,21 +74,36 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
     }
 
     fun joinOnlineRoom(playerName: String) {
-        val (success, error) = repository.joinOnlineRoom(playerName)
+        viewModelScope.launch {
+            val (success, error) = repository.joinOnlineRoom(playerName)
+            if (!success) {
+                _uiState.update { it.copy(errorMessage = error) }
+            } else {
+                _uiState.update { it.copy(session = repository.session.value, errorMessage = null) }
+            }
+        }
+    }
+
+    fun startCoinToss() {
+        val (success, error) = repository.startCoinToss()
         if (!success) {
             _uiState.update { it.copy(errorMessage = error) }
         } else {
-            _uiState.update { it.copy(errorMessage = null) }
+            _uiState.update { it.copy(session = repository.session.value, errorMessage = null) }
+        }
+    }
+
+    fun finishCoinToss(winnerPlayerId: String) {
+        val (success, error) = repository.finishCoinToss(winnerPlayerId)
+        if (!success) {
+            _uiState.update { it.copy(errorMessage = error) }
+        } else {
+            _uiState.update { it.copy(session = repository.session.value, errorMessage = null) }
         }
     }
 
     fun startGameSession() {
-        val (success, error) = repository.startGameSession()
-        if (!success) {
-            _uiState.update { it.copy(errorMessage = error) }
-        } else {
-            _uiState.update { it.copy(errorMessage = null) }
-        }
+        startCoinToss()
     }
 
     private fun checkBotTurn(currentTurnPlayerId: String, status: GameStatus, roomId: String) {
@@ -239,11 +261,12 @@ class GameViewModel(application: Application = Application()) : AndroidViewModel
 
     fun restartGame() {
         repository.restartGame()
-        _uiState.update { GameUiState() }
+        _uiState.update { GameUiState(session = repository.session.value) }
     }
 
     fun forfeitGame() {
         repository.forfeitGame(localPlayerId)
+        _uiState.update { GameUiState(session = repository.session.value) }
     }
 
     override fun onCleared() {

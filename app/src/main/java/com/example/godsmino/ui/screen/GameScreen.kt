@@ -9,8 +9,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -24,7 +22,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
@@ -37,7 +34,6 @@ import com.example.godsmino.data.model.Player
 import com.example.godsmino.data.model.PowerType
 import com.example.godsmino.ui.components.*
 import com.example.godsmino.ui.viewmodel.GameViewModel
-// import androidx.compose.ui.zIndex.zIndex
 import com.example.godsmino.util.SoundManager
 
 @Composable
@@ -52,11 +48,13 @@ fun GameScreen(
     val haptic = LocalHapticFeedback.current
     var showQuitDialog by remember { mutableStateOf(false) }
 
-    // Always keep Local Player fixed at the bottom, and opponent fixed at the top
+    // Always keep Local Player non-null and fixed at bottom, and opponent fixed at top
     val localPlayerId = viewModel.localPlayerId
-    val player1 = session.players.firstOrNull { it.id == localPlayerId } ?: session.players.firstOrNull()
-    val opponent = session.players.firstOrNull { it.id != localPlayerId } ?: session.players.getOrNull(1)
-    val isMyTurn = session.currentTurnPlayerId == localPlayerId
+    val player1 = session.players.firstOrNull { it.id == localPlayerId }
+        ?: session.players.firstOrNull()
+        ?: Player(id = localPlayerId, name = "Jugador")
+    val opponent = session.players.firstOrNull { it.id != player1.id }
+    val isMyTurn = session.currentTurnPlayerId == player1.id
 
     LaunchedEffect(roomId, isHost) {
         if (session.roomId != roomId) {
@@ -70,8 +68,20 @@ fun GameScreen(
         }
     }
 
+    // Coin Toss Dialog before match starts
+    if (session.status == GameStatus.COIN_TOSS) {
+        CoinTossDialog(
+            onTossFinished = { winnerId ->
+                if (isHost) {
+                    viewModel.finishCoinToss(winnerId)
+                }
+            },
+            players = session.players
+        )
+    }
+
     // Power Confirmation Dialog
-    if (uiState.pendingPowerDialog != null && player1 != null) {
+    if (uiState.pendingPowerDialog != null) {
         PowerConfirmationDialog(
             powerType = uiState.pendingPowerDialog!!,
             playerTiles = player1.tiles,
@@ -196,7 +206,6 @@ fun GameScreen(
             RandomEventBanner(event = session.activeEvent)
 
             // 2. CENTER SECTION: Board 
-            // Eliminado el Sidebar de poderes lateral para dar más espacio horizontal al tablero.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -237,7 +246,6 @@ fun GameScreen(
                             onClick = {
                                 SoundManager.playClickSound()
                                 haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                // We exit the game and return to the lobby instead of trying to restart the flow
                                 onBackToLobby()
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFD4AF37)),
@@ -247,11 +255,10 @@ fun GameScreen(
                         }
                     }
                 }
-            } else if (player1 != null) {
+            } else {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                    // .zIndex(10f)
                         .background(Color(0xFF141414).copy(alpha = 0.85f), RoundedCornerShape(16.dp))
                         .border(1.dp, Color(0xFF2C2C2C), RoundedCornerShape(16.dp))
                         .padding(10.dp),
@@ -287,7 +294,7 @@ fun GameScreen(
                             val color = if (count > 0) (if (isSelected) Color(0xFF4CAF50) else Color(0xFFD4AF37)) else Color.DarkGray
                             IconButton(
                                 onClick = {
-                                    if (count > 0) {
+                                    if (count > 0 && isMyTurn) {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                         viewModel.requestUsePower(power)
                                     }

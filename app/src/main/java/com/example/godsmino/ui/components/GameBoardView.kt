@@ -64,6 +64,7 @@ fun GameBoardView(
             .clip(RoundedCornerShape(20.dp))
             .background(Brush.radialGradient(colors = colors))
             .border(3.dp, borderColor, RoundedCornerShape(20.dp))
+            .clickable { onToggleTheme() }
             .padding(12.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -72,12 +73,12 @@ fun GameBoardView(
             modifier = Modifier
                 .align(Alignment.TopEnd)
                 .clip(RoundedCornerShape(8.dp))
-                .background(Color.Black.copy(alpha = 0.4f))
+                .background(Color.Black.copy(alpha = 0.5f))
                 .clickable { onToggleTheme() }
                 .padding(horizontal = 8.dp, vertical = 4.dp)
         ) {
             Text(
-                text = "Tema: $themeName",
+                text = "Tema: $themeName (Toca para cambiar)",
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
                 color = Color(0xFFFFD700)
@@ -87,7 +88,7 @@ fun GameBoardView(
         if (board.isEmpty()) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    text = "Tablero de Domino",
+                    text = "Tablero de Dominó",
                     color = Color.White.copy(alpha = 0.9f),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                 )
@@ -105,7 +106,7 @@ fun GameBoardView(
                     modifier = Modifier
                         .fillMaxSize()
                         .horizontalScroll(scrollState)
-                        .padding(horizontal = 40.dp), // Give space so tiles don't hide completely behind indicators at the absolute edges
+                        .padding(horizontal = 40.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
